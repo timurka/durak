@@ -541,12 +541,27 @@
     // Try multiple shuffles until initial hands do not violate the 5+ same-suit rule
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const d = shuffle(makeDeck().slice());
+      // Ensure face-up trump is not an Ace ('Т') by moving a non-Ace to index 0
+      let idxTrump = d.findIndex(c => c.rank !== 'Т');
+      if (idxTrump === -1) idxTrump = 0; // fallback, extremely unlikely
+      if (idxTrump !== 0) {
+        const tmp = d[0]; d[0] = d[idxTrump]; d[idxTrump] = tmp;
+      }
+      // If double-trump, ensure second trump is not an Ace either; position it at index 1
+      let secondTrumpCard = null;
+      if (state.doubleTrumpMode && d.length >= 2) {
+        let idxSecond = d.findIndex((c, i) => i !== 0 && c.rank !== 'Т');
+        if (idxSecond === -1) idxSecond = 1; // fallback if all Aces but one
+        if (idxSecond !== 1) {
+          const t2 = d[1]; d[1] = d[idxSecond]; d[idxSecond] = t2;
+        }
+        secondTrumpCard = d[1];
+      }
       const trump = d[0];
       const working = d.slice();
-      let secondTrumpCard = null;
-      if (state.doubleTrumpMode && working.length >= 2) {
-        secondTrumpCard = working[1];
-        working.splice(1, 1); // keep hidden until reveal
+      // Remove the hidden card from working deck so it won't be dealt
+      if (secondTrumpCard) {
+        working.splice(1, 1);
       }
       if (!violatesMonoSuitOnInitialDeal(working)) {
         return { deck: working, trump, secondTrumpCard };
@@ -554,13 +569,19 @@
     }
     // Fallback (extremely unlikely): return last attempt even if violates
     const d = shuffle(makeDeck().slice());
+    let idxTrump = d.findIndex(c => c.rank !== 'Т');
+    if (idxTrump === -1) idxTrump = 0;
+    if (idxTrump !== 0) { const tmp = d[0]; d[0] = d[idxTrump]; d[idxTrump] = tmp; }
+    let secondTrumpCard = null;
+    if (state.doubleTrumpMode && d.length >= 2) {
+      let idxSecond = d.findIndex((c, i) => i !== 0 && c.rank !== 'Т');
+      if (idxSecond === -1) idxSecond = 1;
+      if (idxSecond !== 1) { const t2 = d[1]; d[1] = d[idxSecond]; d[idxSecond] = t2; }
+      secondTrumpCard = d[1];
+    }
     const trump = d[0];
     const working = d.slice();
-    let secondTrumpCard = null;
-    if (state.doubleTrumpMode && working.length >= 2) {
-      secondTrumpCard = working[1];
-      working.splice(1, 1);
-    }
+    if (secondTrumpCard) working.splice(1, 1);
     return { deck: working, trump, secondTrumpCard };
   }
   function sortHand(hand) {
@@ -1230,15 +1251,22 @@
     state.isDealing = true;
     state.dealContext = 'initial';
     updateUI();
-    // Determine how many already dealt (resume support)
-    const alreadyP = state.player.hand.length;
-    const alreadyA = state.ai.hand.length;
-    const startI = Math.max(alreadyP, alreadyA);
-    for (let i = startI; i < HAND_SIZE; i++) {
+    // Resume-aware alternating deal: always give the next card to the one у кого меньше карт
+    while (state.player.hand.length < HAND_SIZE || state.ai.hand.length < HAND_SIZE) {
       if (state.deck.length === 0) break;
-      await animateDealOne(state.player);
-      if (state.deck.length === 0) break;
-      await animateDealOne(state.ai);
+      const giveToPlayer = state.player.hand.length === state.ai.hand.length;
+      const target = giveToPlayer ? state.player : state.ai;
+      if ((giveToPlayer && state.player.hand.length >= HAND_SIZE) || (!giveToPlayer && state.ai.hand.length >= HAND_SIZE)) {
+        // If chosen target already full, give to the other if needed
+        const altTarget = giveToPlayer ? state.ai : state.player;
+        if ((giveToPlayer && state.ai.hand.length < HAND_SIZE) || (!giveToPlayer && state.player.hand.length < HAND_SIZE)) {
+          await animateDealOne(altTarget);
+        } else {
+          break;
+        }
+      } else {
+        await animateDealOne(target);
+      }
     }
     state.isDealing = false;
     state.dealContext = null;
