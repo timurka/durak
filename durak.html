@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Русский дурак (подкидной/переводной, суперсилы, анимация)</title>
+<style>
+  :root {
+    --table-bg: #0c4a2b;
+    --felt: #116d3d;
+    --card-w: 80px;
+    --card-h: 120px;
+    --card-radius: 8px;
+    --accent: #ffd166;
+    --danger: #ef476f;
+    --ok: #06d6a0;
+    --muted: #a5b4c0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #0b3d27;
+    color: #f1f5f9;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+  }
+  header, footer {
+    padding: 10px 14px;
+    background: #072a1b;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  header h1 {
+    font-size: 18px;
+    margin: 0;
+  }
+  .hud { display:none; }
+  .toolbar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 6px 2px;
+  }
+  .group {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    background: #0d2f20;
+    border: 1px solid #1b5a3b;
+    border-radius: 8px;
+  }
+  .group .title { font-size: 12px; color: var(--muted); letter-spacing: 0.2px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .group .arrow { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid #8fbfa8; transition: transform 0.18s ease; opacity: 0.9; }
+  .group.collapsed .arrow { transform: rotate(-90deg); }
+  .group-content { display: inline-flex; align-items: center; gap: 6px; }
+  .group.collapsed .group-content { display: none; }
+  .btn {
+    background: #1f6f4a;
+    border: 1px solid #2ea86f;
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .btn.secondary { background: #273c2c; border-color: #446b52; }
+  .btn.danger { background: #7a1a2f; border-color: #ef476f; }
+  .btn.warn { background: #6c4a00; border-color: #ffb703; }
+  .btn.info { background: #0e4a7a; border-color: #2ea0ff; }
+  .btn.small { padding: 6px 10px; font-size: 14px; }
+  .btn.toggle { background: #24425c; border-color: #4e85b3; }
+  .badge { display: inline-block; padding: 2px 6px; border-radius: 999px; background: #214f39; border: 1px solid #3a7d5a; font-size: 12px; }
+  .switch {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 8px; border-radius: 999px; border: 1px solid #3a7d5a; background: #214f39; font-size: 13px;
+  }
+  .switch input { transform: translateY(1px); }
+
+  /* Table layout */
+  .table {
+    height: calc(100vh - 190px);
+    min-height: 560px;
+    background: radial-gradient(ellipse at center, var(--felt), var(--table-bg) 70%);
+    position: relative;
+    overflow: hidden;
+  }
+  .area {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(1100px, 96vw);
+    padding: 10px;
+  }
+  .opponent-area { top: 8px; }
+  .center-area { top: 32%; }
+  .player-area { bottom: 8px; }
+
+  /* Deck + trump */
+  .deck-zone {
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: calc(var(--card-w) + 16px);
+  }
+  .pile {
+    position: relative;
+    width: var(--card-w);
+    height: var(--card-h);
+    margin: 6px auto;
+  }
+  .pile .card {
+    position: absolute;
+    top: 0; left: 0;
+  }
+  .count-label {
+    text-align: center;
+    font-size: 14px;
+    color: #d1fae5;
+    margin-top: 4px;
+  }
+  .trump-badge {
+    text-align: center;
+    margin-top: 4px;
+    font-size: 14px;
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  /* Cards */
+  .hand {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: var(--card-w);
+    justify-content: center;
+    gap: 8px;
+    padding: 10px;
+    min-height: calc(var(--card-h) + 20px);
+    overflow-x: auto;
+  }
+  .card {
+    width: var(--card-w);
+    height: var(--card-h);
+    background: #fff;
+    color: #111;
+    border-radius: var(--card-radius);
+    box-shadow: 0 6px 14px rgba(0,0,0,0.35);
+    border: 1px solid #eee;
+    position: relative;
+    user-select: none;
+  }
+  .card.face-down {
+    background: repeating-linear-gradient(45deg, #0e3b27, #0e3b27 6px, #12563a 6px, #12563a 12px);
+    border-color: #0b2a1b;
+  }
+  .card .rank {
+    position: absolute;
+    top: 6px; left: 8px;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .card .suit {
+    position: absolute;
+    bottom: 6px; right: 8px;
+    font-size: 18px;
+  }
+  .card.red { color: #c1121f; }
+  .card .small-suit {
+    position: absolute;
+    bottom: 6px; left: 8px;
+    font-size: 14px;
+    opacity: 0.8;
+  }
+  .card .corner-rank {
+    position: absolute;
+    top: 6px; right: 8px;
+    font-size: 14px;
+    opacity: 0.7;
+  }
+  .card.clickable { cursor: pointer; outline: 2px solid transparent; }
+  .card.valid { outline-color: #06d6a0; outline-offset: 2px; }
+  .card.transfer { outline-color: #ffd166; outline-offset: 2px; box-shadow: 0 0 10px rgba(255,209,102,0.6); }
+
+  /* Table pairs */
+  .table-pairs {
+    display: grid;
+    grid-template-columns: repeat(6, var(--card-w));
+    gap: 14px 14px;
+    justify-content: center;
+    padding: 10px;
+    min-height: calc(var(--card-h) + 20px);
+  }
+  .pair {
+    width: var(--card-w);
+    height: calc(var(--card-h) * 2 + 10px);
+    position: relative;
+  }
+  .pair .card.attack {
+    position: absolute;
+    top: 0; left: 0;
+  }
+  .pair .card.defense {
+    position: absolute;
+    top: 26px; left: 12px;
+    transform: rotate(5deg);
+  }
+  .pair.open .card.attack { filter: drop-shadow(0 0 6px rgba(255,215,0,0.6)); }
+
+  /* Opponent display */
+  .opponent-info {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    align-items: center;
+    font-size: 14px;
+    color: #e6fff3;
+  }
+  @media (max-width: 480px) {
+    .opponent-info { font-size: 12px; }
+  }
+
+  /* Log/messages */
+  .log {
+    font-size: 14px;
+    color: #d7fbe8;
+    text-align: center;
+  }
+  .log strong { color: var(--accent); }
+
+  /* Toasts */
+  .toast-container { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 10000; }
+  .toast {
+    background: rgba(23,32,42,0.92);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #fff; padding: 8px 12px; margin-top: 8px; border-radius: 8px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.35); font-size: 14px; white-space: nowrap;
+  }
+
+  /* Confetti */
+  .confetti { position: fixed; width: 8px; height: 12px; opacity: 0.9; z-index: 9999; will-change: transform, opacity; }
+
+  /* Controls bar */
+  .controls {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 6px;
+    flex-wrap: wrap;
+  }
+
+  /* Mobile adaptations */
+  @media (max-width: 768px) {
+    .toolbar { gap: 6px; justify-content: flex-start; overflow-x: auto; padding: 6px; }
+    .group { padding: 4px 6px; }
+    .btn.small { font-size: 12px; padding: 4px 8px; }
+    .badge { font-size: 11px; padding: 2px 5px; }
+    .controls { position: sticky; bottom: 6px; background: rgba(7,42,27,0.55); border: 1px solid #1b5a3b; padding: 8px 10px; border-radius: 10px; backdrop-filter: blur(6px); }
+  }
+
+  /* Phones portrait: smaller cards, 3 columns on table */
+  @media (max-width: 480px) and (orientation: portrait) {
+    :root { --card-w: 58px; --card-h: 88px; }
+    .table-pairs { grid-template-columns: repeat(3, var(--card-w)); gap: 10px 10px; }
+    .hand { gap: 6px; padding: 6px; padding-right: calc(var(--card-w) + 18px); min-height: calc(var(--card-h) + 10px); scroll-snap-type: x proximity; }
+    .hand .card { scroll-snap-align: end; }
+    .opponent-area .hand { min-height: calc(var(--card-h) * 0.8); }
+    .deck-zone { right: 8px; }
+  }
+
+  /* Phones landscape and small tablets: 4 columns on table */
+  @media (max-width: 768px) and (orientation: landscape) {
+    :root { --card-w: 68px; --card-h: 102px; }
+    .table-pairs { grid-template-columns: repeat(4, var(--card-w)); gap: 12px 12px; }
+    .hand { gap: 6px; padding-right: calc(var(--card-w) + 18px); scroll-snap-type: x proximity; }
+    .hand .card { scroll-snap-align: end; }
+    .deck-zone { right: 10px; }
+  }
+
+  /* Flying card (deal animation) */
+  .flying-card {
+    position: fixed;
+    width: var(--card-w);
+    height: var(--card-h);
+    z-index: 9999;
+    transition: transform 0.45s ease, opacity 0.45s ease;
+    will-change: transform, opacity;
+    pointer-events: none;
+  }
+
+  /* Busy overlay to prevent clicks during dealing */
+  .busy-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.0);
+    pointer-events: none;
+  }
+  .busy .busy-overlay {
+    background: rgba(0,0,0,0.0);
+    pointer-events: all;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Русский дурак</h1>
+  <div class="toolbar">
+    <div class="group" id="group-status">
+      <span class="title"><span class="arrow"></span>Статус</span>
+      <div class="group-content">
+        <span class="badge" id="turnBadge">Ходит: —</span>
+        <span class="badge" id="statusBadge">Новая игра</span>
+        <span class="badge" id="scoreBadge">Счёт: Вы <span id="playerScore">0</span> — ИИ <span id="aiScore">0</span></span>
+        <span class="badge" id="superBadge">Суперсила: доступна</span>
+      </div>
+    </div>
+    <div class="group" id="group-game">
+      <span class="title"><span class="arrow"></span>Игра</span>
+      <div class="group-content">
+        <button class="btn small" id="newGameBtn">Новая</button>
+        <button class="btn small secondary" id="endAttackBtn" disabled>Бито</button>
+        <button class="btn small danger" id="takeBtn" disabled>Взять</button>
+        <button class="btn small" id="resetScoreBtn">Сброс счёта</button>
+      </div>
+    </div>
+    <div class="group" id="group-super">
+      <span class="title"><span class="arrow"></span>Супер</span>
+      <div class="group-content">
+        <button class="btn small info" id="peekBtn">Подсмотреть</button>
+        <button class="btn small warn" id="swapBtn">Сменить руку</button>
+      </div>
+    </div>
+    <div class="group" id="group-modes">
+      <span class="title"><span class="arrow"></span>Режимы</span>
+      <div class="group-content">
+        <label class="switch">
+          <input type="checkbox" id="transferModeChk"/>
+          Переводной
+        </label>
+        <button class="btn small toggle" id="fastBtn">Раздача: норм</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="table" id="table">
+  <div class="area opponent-area">
+    <div class="opponent-info">
+      Противник: <span id="opCount">0</span> карт
+    </div>
+    <div class="hand" id="opHand"></div>
+  </div>
+
+  <div class="area center-area">
+    <div class="table-pairs" id="pairs"></div>
+  </div>
+
+  <div class="deck-zone">
+    <div class="pile" id="deckPile"></div>
+    <div class="count-label">В колоде: <span id="deckCount">0</span></div>
+    <div class="trump-badge">Козырь: <span id="trumpSuit">—</span></div>
+    <div class="count-label">Сброс: <span id="discardCount">0</span></div>
+  </div>
+
+  <div class="area player-area">
+    <div class="hand" id="playerHand"></div>
+    <div class="controls">
+      <div class="group">
+        <span class="title">Ход</span>
+        <button class="btn small" id="endAttackBtn2" disabled>Бито</button>
+        <button class="btn small danger" id="takeBtn2" disabled>Взять</button>
+      </div>
+      <div class="log" id="log">Подсказки будут здесь.</div>
+    </div>
+  </div>
+
+  <div class="busy-overlay"></div>
+</div>
+
+<footer>
+  <details id="rulesDetails" open>
+    <summary>Правила</summary>
+    <div style="margin-top:6px">36 карт (6–Туз). Козырь — масть нижней карты колоды. Добор до 6 (сначала атакующий). Защитник может взять. Атакующий — «бито». Подкидка: на первом ходе взятки максимум 5 карт; далее — до последней карты защитника (в руке должна остаться как минимум 1 карта). «Переводной» режим: защитник вместо побития может перевести, добавив карту того же ранга (если укладывается в лимиты), стороны меняются ролями. Во время раздачи доступна кнопка «Перетасовать».</div>
+  </details>
+</footer>
+
+<script>
+(function() {
+  // Game constants
+  const RANKS = ['6','7','8','9','10','В','Д','K','Т'];
+  const RANK_VALUE = { '6':6,'7':7,'8':8,'9':9,'10':10,'В':11,'Д':12,'K':13,'Т':14 };
+  const SUITS = ['♠','♥','♦','♣'];
+  const RED_SUITS = new Set(['♥','♦']);
+  const HAND_SIZE = 6;
+
+  // State
+  const state = {
+    deck: [],
+    discard: [],
+    tablePairs: [], // [{attack: card, defense: card|null}]
+    trumpSuit: null,
+    trumpRefRank: null,
+    player: { hand: [], name: 'Игрок' },
+    ai: { hand: [], name: 'ИИ' },
+    attacker: 'player', // 'player' or 'ai'
+    phase: 'idle',      // 'attack', 'defense', 'adding', 'ai_turn', 'between'
+    message: '',
+    gameOver: false,
+    playerScore: 0,
+    aiScore: 0,
+    isDealing: false,
+    // Superpowers
+    superUsed: false,
+    peekActive: false,
+    // Mode
+    transferMode: false,
+    // Lightweight memory for AI
+    memory: {
+      playerDislikeScore: { '♠': 0, '♥': 0, '♦': 0, '♣': 0 },
+      seenDiscardIds: new Set(),
+      mashCombo: 0,
+      lastMashTs: 0
+    },
+    fastDeal: false,
+    boutStartDefHand: null
+  };
+
+  // DOM
+  const el = {
+    tableRoot: document.getElementById('table'),
+    playerHand: document.getElementById('playerHand'),
+    opHand: document.getElementById('opHand'),
+    pairs: document.getElementById('pairs'),
+    deckPile: document.getElementById('deckPile'),
+    deckCount: document.getElementById('deckCount'),
+    trumpSuit: document.getElementById('trumpSuit'),
+    discardCount: document.getElementById('discardCount'),
+    opCount: document.getElementById('opCount'),
+    log: document.getElementById('log'),
+    newGameBtn: document.getElementById('newGameBtn'),
+    endAttackBtn: document.getElementById('endAttackBtn'),
+    takeBtn: document.getElementById('takeBtn'),
+    turnBadge: document.getElementById('turnBadge'),
+    statusBadge: document.getElementById('statusBadge'),
+    playerScore: document.getElementById('playerScore'),
+    aiScore: document.getElementById('aiScore'),
+    resetScoreBtn: document.getElementById('resetScoreBtn'),
+    peekBtn: document.getElementById('peekBtn'),
+    swapBtn: document.getElementById('swapBtn'),
+    superBadge: document.getElementById('superBadge'),
+    transferModeChk: document.getElementById('transferModeChk'),
+    rulesDetails: document.getElementById('rulesDetails'),
+    endAttackBtn2: document.getElementById('endAttackBtn2'),
+    takeBtn2: document.getElementById('takeBtn2'),
+    fastBtn: document.getElementById('fastBtn')
+  };
+
+  // Helpers
+  const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+
+  function makeDeck() {
+    const deck = [];
+    let id = 0;
+    for (const s of SUITS) for (const r of RANKS) {
+      deck.push({ id: id++, suit: s, rank: r, value: RANK_VALUE[r] });
+    }
+    return deck;
+  }
+  function shuffle(a) {
+    for (let i = a.length -1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+  function sortHand(hand) {
+    return hand.sort((c1, c2) => {
+      const t1 = (c1.suit === state.trumpSuit) ? 1 : 0;
+      const t2 = (c2.suit === state.trumpSuit) ? 1 : 0;
+      if (t1 !== t2) return t1 - t2;
+      if (c1.suit !== c2.suit) return SUITS.indexOf(c1.suit) - SUITS.indexOf(c2.suit);
+      return c1.value - c2.value;
+    });
+  }
+  function removeFromHand(player, cardId) {
+    const idx = player.hand.findIndex(c => c.id == cardId);
+    if (idx >= 0) player.hand.splice(idx, 1);
+  }
+  function ranksOnTable() {
+    const s = new Set();
+    for (const p of state.tablePairs) {
+      if (p.attack) s.add(p.attack.rank);
+      if (p.defense) s.add(p.defense.rank);
+    }
+    return s;
+  }
+  function defendedCount() {
+    return state.tablePairs.filter(p => p.defense != null).length;
+  }
+  function cardBeats(def, atk) {
+    if (!def || !atk) return false;
+    if (def.suit === atk.suit && def.value > atk.value) return true;
+    if (def.suit === state.trumpSuit && atk.suit !== state.trumpSuit) return true;
+    return false;
+  }
+  function allDefended() {
+    return state.tablePairs.length > 0 && state.tablePairs.every(p => p.defense != null);
+  }
+  function tableHasUndefended() {
+    return state.tablePairs.some(p => p.defense == null);
+  }
+  function clearToDiscard() {
+    for (const p of state.tablePairs) {
+      if (p.attack) {
+        state.discard.push(p.attack);
+        if (state.memory && state.memory.seenDiscardIds) state.memory.seenDiscardIds.add(p.attack.id);
+      }
+      if (p.defense) {
+        state.discard.push(p.defense);
+        if (state.memory && state.memory.seenDiscardIds) state.memory.seenDiscardIds.add(p.defense.id);
+      }
+    }
+    state.tablePairs = [];
+  }
+  // Dynamic cap of pairs per bout:
+  // - On the very first attack card of a bout: max 5
+  // - Thereafter: allow adding up to the defender's initial hand for the bout,
+  //   which equals defendedCount() + defender.hand.length at any moment
+  //   (this matches the common rule «до последней карты защитника»)
+  function getAddCap(defender) {
+    const firstMove = state.tablePairs.length === 0;
+    if (firstMove) {
+      state.boutStartDefHand = defender.hand.length;
+      return Math.min(5, HAND_SIZE);
+    }
+    const dynamicCap = defendedCount() + defender.hand.length;
+    return Math.min(dynamicCap, HAND_SIZE);
+  }
+  function moveTableTo(defender) {
+    for (const p of state.tablePairs) {
+      if (p.attack) defender.hand.push(p.attack);
+      if (p.defense) defender.hand.push(p.defense);
+    }
+    state.tablePairs = [];
+    sortHand(defender.hand);
+  }
+  function canAddMore(defender) {
+    return state.tablePairs.length < getAddCap(defender);
+  }
+  function isValidAttackCard(card, defender) {
+    if (state.tablePairs.length === 0) return true;
+    const ranks = ranksOnTable();
+    if (!ranks.has(card.rank)) return false;
+    return state.tablePairs.length < getAddCap(defender);
+  }
+  function validPlayerAttackCards() {
+    const defender = state.attacker === 'player' ? state.ai : state.player;
+    return state.player.hand.filter(c => isValidAttackCard(c, defender));
+  }
+  function validPlayerDefenseCards() {
+    const target = state.tablePairs.find(p => !p.defense)?.attack;
+    if (!target) return [];
+    return state.player.hand.filter(c => cardBeats(c, target));
+  }
+  function validPlayerTransferCards() {
+    if (!state.transferMode) return [];
+    if (state.attacker !== 'ai') return [];
+    if (defendedCount() > 0) return [];
+    const target = state.tablePairs.find(p => !p.defense)?.attack;
+    if (!target) return [];
+    const newDef = state.ai; // после перевода защищаться будет ИИ
+    const cap = getAddCap(newDef);
+    const nextPairs = state.tablePairs.length + 1;
+    if (nextPairs > cap) return [];
+    // Исключаем карты, которые могут побить — чтобы не вызывать конфликт выбора
+    return state.player.hand.filter(c => c.rank === target.rank && !cardBeats(c, target));
+  }
+  function chooseLowest(cards, preferNonTrump=true) {
+    const hand = [...cards];
+    hand.sort((a,b) => {
+      const at = a.suit === state.trumpSuit ? 1 : 0;
+      const bt = b.suit === state.trumpSuit ? 1 : 0;
+      if (preferNonTrump && at !== bt) return at - bt;
+      if (a.suit === b.suit) return a.value - b.value;
+      return a.value - b.value;
+    });
+    return hand[0];
+  }
+  // Simple player advisor: suggests 1-2 best cards based on current phase
+  function adviseBestPlayerCard() {
+    if (!state.advisorOn) return null;
+    const picks = new Set();
+    if (state.attacker === 'player') {
+      const defender = state.ai;
+      const candidates = state.player.hand.filter(c => isValidAttackCard(c, defender));
+      if (candidates.length > 0) {
+        candidates.sort((a,b)=>{
+          const at = a.suit === state.trumpSuit ? 1 : 0;
+          const bt = b.suit === state.trumpSuit ? 1 : 0;
+          if (at !== bt) return at - bt;
+          return a.value - b.value;
+        });
+        picks.add(candidates[0].id);
+        if (candidates[1]) picks.add(candidates[1].id);
+      }
+    } else {
+      const target = state.tablePairs.find(p => !p.defense)?.attack;
+      if (target) {
+        const defenders = state.player.hand.filter(c => cardBeats(c, target));
+        if (defenders.length > 0) {
+          defenders.sort((a,b)=>{
+            const at = a.suit === state.trumpSuit ? 1 : 0;
+            const bt = b.suit === state.trumpSuit ? 1 : 0;
+            if (at !== bt) return at - bt;
+            return a.value - b.value;
+          });
+          picks.add(defenders[0].id);
+          if (defenders[1]) picks.add(defenders[1].id);
+        }
+      }
+    }
+    return picks.size ? picks : null;
+  }
+  function updateAdvisorToast() {
+    if (!state.advisorOn) return;
+    if (state.attacker === 'player') {
+      showToast('Подсказка: атакуйте низкой некозырной или рангом на стол.');
+    } else {
+      showToast('Подсказка: бейте минимальной подходящей картой или переведите.');
+    }
+  }
+  function countRanksInHand(hand) {
+    const map = new Map();
+    for (const c of hand) map.set(c.rank, (map.get(c.rank) || 0) + 1);
+    return map;
+  }
+  function aiChooseAttackCard() {
+    const defender = state.player;
+    const hand = state.ai.hand;
+    const cap = getAddCap(defender);
+    const ranks = ranksOnTable();
+    const deckEmpty = state.deck.length === 0;
+    let candidates;
+    if (state.tablePairs.length === 0) {
+      candidates = hand.slice();
+    } else {
+      if (state.tablePairs.length >= cap) return null;
+      candidates = hand.filter(c => ranks.has(c.rank));
+    }
+    if (candidates.length === 0) return null;
+    const dislikes = state.memory?.playerDislikeScore || { '♠':0,'♥':0,'♦':0,'♣':0 };
+    const rankCounts = countRanksInHand(hand);
+    candidates.sort((a, b) => {
+      const at = a.suit === state.trumpSuit ? 1 : 0;
+      const bt = b.suit === state.trumpSuit ? 1 : 0;
+      if (at !== bt) return at - bt;
+      if (deckEmpty) {
+        const adup = (rankCounts.get(a.rank) || 0) >= 2 ? 0 : 1;
+        const bdup = (rankCounts.get(b.rank) || 0) >= 2 ? 0 : 1;
+        if (adup !== bdup) return adup - bdup;
+      }
+      const ad = -(dislikes[a.suit] || 0);
+      const bd = -(dislikes[b.suit] || 0);
+      if (ad !== bd) return ad - bd;
+      if (a.value !== b.value) return a.value - b.value;
+      return SUITS.indexOf(a.suit) - SUITS.indexOf(b.suit);
+    });
+    return candidates[0];
+  }
+  function aiChooseDefenseCard(attackCard) {
+    const candidates = state.ai.hand.filter(c => cardBeats(c, attackCard));
+    if (candidates.length === 0) return null;
+    candidates.sort((a,b)=> {
+      const at = a.suit === state.trumpSuit ? 1 : 0;
+      const bt = b.suit === state.trumpSuit ? 1 : 0;
+      if (at !== bt) return at - bt; // prefer non-trumps
+      if (a.suit === b.suit) return a.value - b.value;
+      return a.value - b.value;
+    });
+    return candidates[0];
+  }
+  async function aiDefendAllOpenOrTake() {
+    while (true) {
+      const openPair = state.tablePairs.find(p => p.defense == null);
+      if (!openPair) break;
+      const defCard = aiChooseDefenseCard(openPair.attack);
+      if (defCard) {
+        removeFromHand(state.ai, defCard.id);
+        openPair.defense = defCard;
+        updateUI();
+        await sleep(350);
+      } else {
+        setMessage('ИИ не может побить и берет.');
+        updateUI();
+        await sleep(350);
+        await defenderTakes(state.ai);
+        return;
+      }
+    }
+    setMessage('ИИ побил все карты. Можете подкинуть или завершить атаку (Бито).');
+    updateUI();
+  }
+  function lowestTrumpIn(hand) {
+    const trumps = hand.filter(c => c.suit === state.trumpSuit);
+    if (trumps.length === 0) return null;
+    trumps.sort((a,b)=> a.value - b.value);
+    return trumps[0];
+  }
+  function determineFirstAttacker() {
+    const pt = lowestTrumpIn(state.player.hand);
+    const at = lowestTrumpIn(state.ai.hand);
+    if (pt && at) {
+      state.attacker = (pt.value < at.value) ? 'player' : 'ai';
+    } else if (pt && !at) {
+      state.attacker = 'player';
+    } else if (!pt && at) {
+      state.attacker = 'ai';
+    } else {
+      state.attacker = 'player';
+    }
+  }
+  function setMessage(msg) {
+    state.message = msg;
+    el.log.innerHTML = msg;
+  }
+  function ensureToastContainer() {
+    let c = document.getElementById('toastContainer');
+    if (!c) {
+      c = document.createElement('div');
+      c.id = 'toastContainer';
+      c.className = 'toast-container';
+      document.body.appendChild(c);
+    }
+    return c;
+  }
+  function showToast(text, timeout=2200) {
+    const c = ensureToastContainer();
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = text;
+    c.appendChild(t);
+    setTimeout(()=>{
+      t.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+      t.style.opacity = '0';
+      t.style.transform = 'translateY(-6px)';
+      setTimeout(()=> t.remove(), 320);
+    }, timeout);
+  }
+  function setBadges() {
+    el.turnBadge.textContent = 'Ходит: ' + (state.attacker === 'player' ? 'Вы' : 'ИИ');
+    let phaseTitle = '';
+    switch (state.phase) {
+      case 'attack': phaseTitle = 'Атака'; break;
+      case 'defense': phaseTitle = 'Защита'; break;
+      case 'adding': phaseTitle = 'Подкидка'; break;
+      case 'ai_turn': phaseTitle = 'Ход ИИ'; break;
+      case 'between': phaseTitle = 'Меж ходами'; break;
+      default: phaseTitle = '—';
+    }
+    el.statusBadge.textContent = 'Статус: ' + phaseTitle;
+    el.superBadge.textContent = 'Суперсила: ' + (state.superUsed ? 'использована' : 'доступна');
+  }
+  function updateScoreBoard() {
+    el.playerScore.textContent = state.playerScore;
+    el.aiScore.textContent = state.aiScore;
+  }
+
+  // Rendering
+  function renderCard(c, faceUp=true) {
+    const d = document.createElement('div');
+    d.className = 'card';
+    if (!faceUp) {
+      d.classList.add('face-down');
+      return d;
+    }
+    if (c && RED_SUITS.has(c.suit)) d.classList.add('red');
+    const r = document.createElement('div');
+    r.className = 'rank';
+    r.textContent = c ? c.rank : '';
+    const s = document.createElement('div');
+    s.className = 'suit';
+    s.textContent = c ? c.suit : '';
+    const sr = document.createElement('div');
+    sr.className = 'corner-rank';
+    sr.textContent = c ? c.rank : '';
+    const ss = document.createElement('div');
+    ss.className = 'small-suit';
+    ss.textContent = c ? c.suit : '';
+    d.appendChild(r); d.appendChild(s); d.appendChild(sr); d.appendChild(ss);
+    return d;
+  }
+  function renderHands() {
+    // Player
+    el.playerHand.innerHTML = '';
+    const defender = state.attacker === 'player' ? state.ai : state.player;
+
+    const validAtk = (state.attacker === 'player') ? new Set(validPlayerAttackCards().map(c=>c.id)) : new Set();
+    const validDef = (state.attacker === 'ai' && tableHasUndefended()) ? new Set(validPlayerDefenseCards().map(c=>c.id)) : new Set();
+    const validTransfer = new Set(validPlayerTransferCards().map(c=>c.id));
+
+    state.player.hand.forEach((c) => {
+      const cardEl = renderCard(c, true);
+      cardEl.dataset.id = c.id;
+      if (!state.isDealing && !state.gameOver) {
+        cardEl.classList.add('clickable');
+        if (state.attacker === 'player' && isValidAttackCard(c, defender)) {
+          cardEl.classList.add('valid');
+          cardEl.title = 'Кликните чтобы атаковать';
+        }
+        if (state.attacker === 'ai' && validDef.has(c.id)) {
+          cardEl.classList.add('valid');
+          cardEl.title = 'Кликните чтобы побить';
+        }
+        if (state.attacker === 'ai' && validTransfer.has(c.id)) {
+          cardEl.classList.add('transfer');
+          cardEl.title = 'Перевести (карта того же ранга)';
+        }
+        // Advisor highlighting
+        if (state.advisorOn) {
+          const advice = adviseBestPlayerCard();
+          if (advice && advice.has(c.id)) cardEl.classList.add('advice');
+        }
+        cardEl.addEventListener('click', () => onPlayerCardClick(c.id));
+      }
+      el.playerHand.appendChild(cardEl);
+    });
+
+    // Opponent
+    el.opHand.innerHTML = '';
+    const opCount = state.ai.hand.length;
+    el.opCount.textContent = opCount;
+    if (state.peekActive) {
+      // Show real opponent cards face-up temporarily
+      state.ai.hand.forEach(c => {
+        const face = renderCard(c, true);
+        el.opHand.appendChild(face);
+      });
+    } else {
+      const maxShow = Math.min(12, opCount);
+      for (let i=0; i<maxShow; i++) {
+        const back = renderCard(null, false);
+        back.style.transform = '';
+        el.opHand.appendChild(back);
+      }
+    }
+  }
+  function renderTable() {
+    el.pairs.innerHTML = '';
+    for (const p of state.tablePairs) {
+      const pairEl = document.createElement('div');
+      pairEl.className = 'pair' + (p.defense==null ? ' open' : '');
+      if (p.attack) {
+        const a = renderCard(p.attack, true);
+        a.classList.add('attack');
+        pairEl.appendChild(a);
+      }
+      if (p.defense) {
+        const d = renderCard(p.defense, true);
+        d.classList.add('defense');
+        pairEl.appendChild(d);
+      }
+      el.pairs.appendChild(pairEl);
+    }
+  }
+  function renderDeck() {
+    el.deckPile.innerHTML = '';
+    if (state.deck.length > 0) {
+      const n = Math.min(3, state.deck.length);
+      for (let i=0;i<n;i++) {
+        const back = renderCard(null, false);
+        back.style.transform = `translate(${i*2}px, ${-i*2}px)`;
+        el.deckPile.appendChild(back);
+      }
+      const trumpRef = { suit: state.trumpSuit, rank: state.trumpRefRank || '6', value: RANK_VALUE[state.trumpRefRank || '6'] };
+      const t = renderCard(trumpRef, true);
+      t.style.transform = 'rotate(90deg) translate(16px, 26px)';
+      el.deckPile.appendChild(t);
+    }
+    el.deckCount.textContent = state.deck.length;
+    el.trumpSuit.textContent = state.trumpSuit || '—';
+    el.discardCount.textContent = state.discard.length;
+  }
+  function updateButtons() {
+    const noClicks = state.isDealing || state.gameOver;
+    el.endAttackBtn.disabled = noClicks || !(
+      state.attacker === 'player' &&
+      state.tablePairs.length > 0 &&
+      allDefended()
+    );
+    el.takeBtn.disabled = noClicks || !(
+      state.attacker === 'ai' &&
+      state.tablePairs.length > 0 &&
+      tableHasUndefended()
+    );
+    el.peekBtn.disabled = noClicks || state.superUsed;
+    el.swapBtn.disabled = noClicks || state.superUsed || state.player.hand.length === 0;
+    // Duplicate controls near hand
+    el.endAttackBtn2.disabled = el.endAttackBtn.disabled;
+    el.takeBtn2.disabled = el.takeBtn.disabled;
+    // Shuffle button visible only during dealing
+    if (el.mashBtn) el.mashBtn.style.display = state.isDealing && !state.gameOver ? '' : 'none';
+  }
+  function updateUI() {
+    el.tableRoot.classList.toggle('busy', state.isDealing);
+    setBadges();
+    updateScoreBoard();
+    renderDeck();
+    renderTable();
+    renderHands();
+    updateButtons();
+    updateAdvisorToast();
+  }
+
+  // Animations
+  async function animateShuffle() {
+    // Show deck, shake it
+    renderDeck();
+    const deckEl = el.deckPile;
+    const steps = 14;
+    for (let i=0; i<steps; i++) {
+      const dx = (Math.random() - 0.5) * 14;
+      const dy = (Math.random() - 0.5) * 10;
+      const rot = (Math.random() - 0.5) * 14;
+      deckEl.style.transition = 'transform 0.06s ease';
+      deckEl.style.transform = `translate(${dx}px, ${dy}px) rotate(${rot}deg)`;
+      await sleep(60);
+    }
+    deckEl.style.transition = 'transform 0.15s ease';
+    deckEl.style.transform = `translate(0,0) rotate(0deg)`;
+    await sleep(150);
+  }
+  function createFlyingCardEl(faceUp, card) {
+    const elCard = document.createElement('div');
+    elCard.className = 'flying-card card' + (faceUp ? '' : ' face-down');
+    if (faceUp && card) {
+      if (RED_SUITS.has(card.suit)) elCard.classList.add('red');
+      const r = document.createElement('div'); r.className = 'rank'; r.textContent = card.rank;
+      const s = document.createElement('div'); s.className = 'suit'; s.textContent = card.suit;
+      const sr = document.createElement('div'); sr.className = 'corner-rank'; sr.textContent = card.rank;
+      const ss = document.createElement('div'); ss.className = 'small-suit'; ss.textContent = card.suit;
+      elCard.appendChild(r); elCard.appendChild(s); elCard.appendChild(sr); elCard.appendChild(ss);
+    }
+    return elCard;
+  }
+  function getCenterRect(node) {
+    const r = node.getBoundingClientRect();
+    return { cx: r.left + r.width/2, cy: r.top + r.height/2, w: r.width, h: r.height, l: r.left, t: r.top };
+  }
+  async function animateDealOne(toWho) {
+    if (state.deck.length === 0) return false;
+    const card = state.deck.pop();
+    const faceUp = (toWho === state.player);
+    const fly = createFlyingCardEl(faceUp, card);
+
+    const deckRect = getCenterRect(el.deckPile);
+    const startX = deckRect.cx - (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-w'))/2);
+    const startY = deckRect.cy - (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-h'))/2);
+    fly.style.left = `${startX}px`; fly.style.top = `${startY}px`; fly.style.transform = `translate(0px,0px)`;
+    document.body.appendChild(fly);
+
+    updateUI();
+    const handEl = (toWho === state.player) ? el.playerHand : el.opHand;
+    const handRect = getCenterRect(handEl);
+    const dx = handRect.cx - startX - (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-w'))/2);
+    const dy = handRect.cy - startY - (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-h'))/2);
+
+    await sleep(state.fastDeal ? 0 : 10);
+    fly.style.transform = `translate(${dx}px, ${dy}px)`;
+    await new Promise(resolve => fly.addEventListener('transitionend', resolve, { once: true }));
+
+    toWho.hand.push(card);
+    sortHand(toWho.hand);
+    fly.remove();
+    updateUI();
+    await sleep(state.fastDeal ? 0 : 60);
+    return true;
+  }
+  async function initialDealAnimated() {
+    state.isDealing = true;
+    updateUI();
+    for (let i=0; i<HAND_SIZE; i++) {
+      if (state.deck.length === 0) break;
+      await animateDealOne(state.player);
+      if (state.deck.length === 0) break;
+      await animateDealOne(state.ai);
+    }
+    state.isDealing = false;
+    updateUI();
+  }
+  async function drawUpToSixAnimated(attackerFirst = true) {
+    state.isDealing = true;
+    updateUI();
+    const atk = state.attacker === 'player' ? state.player : state.ai;
+    const def = state.attacker === 'player' ? state.ai : state.player;
+
+    async function drawTo(target, n) {
+      for (let i=0; i<n; i++) {
+        if (state.deck.length === 0) break;
+        await animateDealOne(target);
+      }
+    }
+    const needA = Math.max(0, HAND_SIZE - atk.hand.length);
+    const needD = Math.max(0, HAND_SIZE - def.hand.length);
+    if (attackerFirst) { await drawTo(atk, needA); await drawTo(def, needD); }
+    else { await drawTo(def, needD); await drawTo(atk, needA); }
+
+    state.isDealing = false;
+    updateUI();
+  }
+
+  // Turn flow and game logic
+  function checkGameOver() {
+    if (state.deck.length === 0) {
+      const pEmpty = state.player.hand.length === 0;
+      const aEmpty = state.ai.hand.length === 0;
+      if (pEmpty && aEmpty) {
+        setMessage('Ничья: карты закончились у обоих.');
+        state.gameOver = true; updateUI(); return true;
+      }
+      if (pEmpty) {
+        state.playerScore++;
+        setMessage('Победа! Вы вышли из карт первым. Счет: Вы ' + state.playerScore + ' — ИИ ' + state.aiScore);
+        celebrate();
+        state.gameOver = true; updateUI(); return true;
+      }
+      if (aEmpty) {
+        state.aiScore++;
+        setMessage('ИИ вышел из карт, вы остались с картами. Раунд за ИИ. Счет: Вы ' + state.playerScore + ' — ИИ ' + state.aiScore);
+        state.gameOver = true; updateUI(); return true;
+      }
+    }
+    return false;
+  }
+  function celebrate() {
+    const colors = ['#ff6b6b','#ffd166','#06d6a0','#118ab2','#c77dff'];
+    const num = 80;
+    for (let i=0;i<num;i++) {
+      const piece = document.createElement('div');
+      piece.className = 'confetti';
+      piece.style.background = colors[Math.floor(Math.random()*colors.length)];
+      piece.style.left = (window.innerWidth*0.2 + Math.random()*window.innerWidth*0.6) + 'px';
+      piece.style.top = '-20px';
+      piece.style.transform = `rotate(${Math.random()*360}deg)`;
+      document.body.appendChild(piece);
+      const dx = (Math.random()-0.5)*120;
+      const dy = window.innerHeight + Math.random()*200;
+      const rot = (Math.random()-0.5)*360;
+      piece.animate([
+        { transform: piece.style.transform, opacity: 1 },
+        { transform: `translate(${dx}px, ${dy}px) rotate(${rot}deg)`, opacity: 0.8 }
+      ], { duration: 1600 + Math.random()*800, easing: 'ease-out', fill: 'forwards' });
+      setTimeout(()=> piece.remove(), 2500);
+    }
+    showToast('Победа! 🎉');
+  }
+
+  async function endBoutSuccessfulDefense() {
+    clearToDiscard();
+    updateUI();
+    await drawUpToSixAnimated(true);
+    state.boutStartDefHand = null;
+    state.attacker = (state.attacker === 'player') ? 'ai' : 'player';
+    state.phase = (state.attacker === 'player') ? 'attack' : 'ai_turn';
+    updateUI();
+    if (checkGameOver()) return;
+    setMessage(state.attacker === 'player' ? 'Ваш ход: атакуйте.' : 'Ход ИИ: ожидайте.');
+    if (state.attacker === 'ai') setTimeout(aiTurn, 500);
+  }
+
+  async function defenderTakes(defender) {
+    moveTableTo(defender);
+    updateUI();
+    await drawUpToSixAnimated(true);
+    state.boutStartDefHand = null;
+    state.phase = (state.attacker === 'player') ? 'attack' : 'ai_turn';
+    updateUI();
+    if (checkGameOver()) return;
+    setMessage(state.attacker === 'player' ? 'Противник взял. Ваш ход продолжается.' : 'Вы взяли. ИИ атакует снова.');
+    if (state.attacker === 'ai') setTimeout(aiTurn, 600);
+  }
+
+  async function startGame() {
+    if (state.isDealing) return;
+    state.deck = shuffle(makeDeck());
+    const trumpCard = state.deck[0];
+    state.trumpSuit = trumpCard.suit;
+    state.trumpRefRank = trumpCard.rank;
+
+    state.discard = [];
+    state.tablePairs = [];
+    state.player.hand = [];
+    state.ai.hand = [];
+    state.gameOver = false;
+
+    // reset supers for new game
+    state.superUsed = false;
+    state.peekActive = false;
+    state.memory.playerDislikeScore = { '♠': 0, '♥': 0, '♦': 0, '♣': 0 };
+    state.memory.seenDiscardIds = new Set();
+    state.boutStartDefHand = null;
+
+    state.phase = 'between';
+    setMessage('Перемешиваем колоду...');
+    updateUI();
+    await animateShuffle();
+
+    setMessage('Раздача карт...');
+    renderDeck();
+    await initialDealAnimated();
+
+    determineFirstAttacker();
+    state.phase = (state.attacker === 'player') ? 'attack' : 'ai_turn';
+    setMessage(state.attacker === 'player' ? 'Ваш ход: сыграйте любую карту для атаки.' : 'Ход ИИ: ожидайте.');
+    updateUI();
+
+    if (state.attacker === 'ai') setTimeout(aiTurn, 600);
+  }
+
+  // Transfer logic helpers
+  function canPlayerTransferWith(card) {
+    if (!state.transferMode) return false;
+    if (state.attacker !== 'ai') return false;
+    if (defendedCount() > 0) return false;
+    const target = state.tablePairs.find(p => !p.defense)?.attack;
+    if (!target) return false;
+    if (card.rank !== target.rank) return false;
+    const newDef = state.ai;
+    const cap = getAddCap(newDef);
+    const nextPairs = state.tablePairs.length + 1;
+    return nextPairs <= cap;
+  }
+
+  function aiCanTransferWithCard(card, attackCard) {
+    if (!state.transferMode) return false;
+    if (state.attacker !== 'player') return false; // AI is defender
+    if (defendedCount() > 0) return false;
+    if (!attackCard) return false;
+    if (card.rank !== attackCard.rank) return false;
+    const newDef = state.player;
+    const cap = getAddCap(newDef);
+    const nextPairs = state.tablePairs.length + 1;
+    return nextPairs <= cap;
+  }
+
+  function onPlayerCardClick(cardId) {
+    if (state.gameOver || state.isDealing) return;
+    const card = state.player.hand.find(c => c.id == cardId);
+    if (!card) return;
+
+    if (state.attacker === 'player') {
+      // Player attacking or adding
+      const defender = state.ai;
+      if (!isValidAttackCard(card, defender)) {
+        setMessage('Этой картой сейчас подкидывать нельзя.');
+        return;
+      }
+      // Play attack
+      removeFromHand(state.player, cardId);
+      state.tablePairs.push({ attack: card, defense: null });
+      updateUI();
+
+      // AI tries to defend (or transfer if allowed)
+      setTimeout(() => {
+        const pair = state.tablePairs.find(p => p.attack.id === cardId);
+        // Try transfer first (переводной)
+        if (state.transferMode && defendedCount() === 0) {
+          const transferCand = state.ai.hand.find(c => aiCanTransferWithCard(c, pair.attack));
+          if (transferCand) {
+            removeFromHand(state.ai, transferCand.id);
+            state.tablePairs.push({ attack: transferCand, defense: null });
+            // Roles swap: AI becomes attacker
+            state.attacker = 'ai';
+            state.phase = 'ai_turn';
+            setMessage('ИИ перевел! Теперь вы защищаетесь.');
+            updateUI();
+            return;
+          }
+        }
+
+        // Otherwise defend
+        const defCard = aiChooseDefenseCard(pair.attack);
+        if (defCard) {
+          removeFromHand(state.ai, defCard.id);
+          pair.defense = defCard;
+          setMessage('ИИ побил карту. Можете подкинуть по рангу на стол или завершить атаку (Бито).');
+          updateUI();
+        } else {
+          setMessage('ИИ не может побить и берет.');
+          updateUI();
+          setTimeout(async () => { await defenderTakes(state.ai); }, 650);
+          return;
+        }
+      }, 380);
+
+    } else {
+      // Player defending OR transferring
+      const target = state.tablePairs.find(p => p.defense == null)?.attack;
+      if (!target) { setMessage('Нет карт для побития.'); return; }
+
+      // If transfer mode and card can transfer — ask player if card also beats
+      if (canPlayerTransferWith(card)) {
+        const target = state.tablePairs.find(p => p.defense == null)?.attack;
+        const canBeat = cardBeats(card, target);
+        if (canBeat) {
+          // Offer choice: defend or transfer
+          const choice = window.confirm('Этой картой можно побить или перевести. ОК — побить, Отмена — перевести.');
+          if (choice) {
+            // defend path
+            if (!cardBeats(card, target)) { setMessage('Этой картой побить нельзя.'); return; }
+            removeFromHand(state.player, cardId);
+            const pair = state.tablePairs.find(p => p.attack.id === target.id);
+            pair.defense = card;
+            updateUI();
+            if (allDefended()) { setTimeout(() => { aiMaybeAddMore(); }, 420); }
+            return;
+          }
+        }
+        removeFromHand(state.player, cardId);
+        state.tablePairs.push({ attack: card, defense: null });
+        // Roles swap: player becomes attacker
+        state.attacker = 'player';
+        state.phase = 'attack';
+        updateUI();
+
+        // After transfer, AI (new defender) must defend all or take
+        setTimeout(async () => { await aiDefendAllOpenOrTake(); }, 380);
+        return;
+      }
+
+      // Otherwise, normal defense
+      if (!cardBeats(card, target)) {
+        setMessage('Этой картой побить нельзя.');
+        return;
+      }
+      removeFromHand(state.player, cardId);
+      const pair = state.tablePairs.find(p => p.attack.id === target.id);
+      pair.defense = card;
+      updateUI();
+
+      // After defending, AI may add if possible (step-by-step)
+      if (allDefended()) {
+        setTimeout(() => { aiMaybeAddMore(); }, 420);
+      }
+    }
+  }
+
+  function aiTurn() {
+    if (state.gameOver || state.isDealing) return;
+    if (state.attacker !== 'ai') return;
+
+    if (state.tablePairs.length === 0 || allDefended()) {
+      const card = aiChooseAttackCard();
+      if (!card) {
+        setMessage('ИИ завершил атаку: Бито.');
+        endBoutSuccessfulDefense();
+        return;
+      }
+      removeFromHand(state.ai, card.id);
+      state.tablePairs.push({ attack: card, defense: null });
+      setMessage('ИИ атакует. Побейте карту, переведите (если можно) или возьмите.');
+      showToast(`ИИ атакует: ${card.rank}${card.suit}`);
+      updateUI();
+    } else {
+      setMessage('ИИ ожидает вашу защиту.');
+      updateUI();
+    }
+  }
+
+  function aiMaybeAddMore() {
+    if (state.gameOver || state.isDealing) return;
+    if (state.attacker !== 'ai') return;
+    let added = false;
+    while (true) {
+      const defender = state.player;
+      if (!canAddMore(defender)) break;
+      const ranks = ranksOnTable();
+      let candidates = state.ai.hand.filter(c => ranks.has(c.rank));
+      if (state.deck.length === 0 && candidates.length > 1) {
+        const rc = countRanksInHand(state.ai.hand);
+        candidates.sort((a,b)=>{
+          const ad = (rc.get(a.rank)||0) >= 2 ? 0 : 1;
+          const bd = (rc.get(b.rank)||0) >= 2 ? 0 : 1;
+          if (ad !== bd) return ad - bd;
+          const at = a.suit === state.trumpSuit ? 1 : 0;
+          const bt = b.suit === state.trumpSuit ? 1 : 0;
+          if (at !== bt) return at - bt;
+          return a.value - b.value;
+        });
+      }
+      if (candidates.length === 0) break;
+      const addCard = chooseLowest(candidates, true);
+      removeFromHand(state.ai, addCard.id);
+      state.tablePairs.push({ attack: addCard, defense: null });
+      added = true;
+      updateUI();
+      break; // step-by-step
+    }
+    if (!added) {
+      setMessage('ИИ завершил атаку: Бито.');
+      endBoutSuccessfulDefense();
+    } else {
+      setMessage('ИИ подкинул. Побейте карту или возьмите.');
+      updateUI();
+    }
+  }
+
+  // Superpowers
+  function usePeek() {
+    if (state.superUsed || state.isDealing || state.gameOver) return;
+    state.superUsed = true;
+    state.peekActive = true;
+    setMessage('Суперсила: вы подсмотрели карты ИИ на 6 секунд.');
+    updateUI();
+    setTimeout(() => { state.peekActive = false; updateUI(); }, 6000);
+  }
+
+  async function useSwapHand() {
+    if (state.superUsed || state.isDealing || state.gameOver) return;
+    if (state.player.hand.length === 0) { setMessage('У вас нет карт для замены.'); return; }
+
+    state.superUsed = true;
+    state.isDealing = true;
+    setMessage('Суперсила: замена вашей руки на случайные карты из колоды...');
+    updateUI();
+
+    // Move player's current hand back into deck and reshuffle
+    const old = state.player.hand.splice(0);
+    state.deck.push(...old);
+    // Keep trump suit unchanged; we keep trumpRefRank as initially set
+    shuffle(state.deck);
+
+    // Deal the same number of cards back to player (animated)
+    const need = old.length;
+    for (let i=0; i<need; i++) {
+      if (state.deck.length === 0) break;
+      await animateDealOne(state.player);
+    }
+    state.isDealing = false;
+    setMessage('Рука заменена.');
+    updateUI();
+  }
+  // (shuffle feature removed)
+
+  // Buttons and controls
+  el.newGameBtn.addEventListener('click', async () => { await startGame(); });
+  el.endAttackBtn.addEventListener('click', async () => {
+    if (state.isDealing || state.gameOver) return;
+    if (state.attacker !== 'player') return;
+    if (!allDefended()) return;
+    setMessage('Бито. Завершаем взятку.');
+    await endBoutSuccessfulDefense();
+  });
+  el.endAttackBtn2.addEventListener('click', async () => {
+    if (state.isDealing || state.gameOver) return;
+    if (state.attacker !== 'player') return;
+    if (!allDefended()) return;
+    setMessage('Бито. Завершаем взятку.');
+    await endBoutSuccessfulDefense();
+  });
+  el.takeBtn.addEventListener('click', async () => {
+    if (state.isDealing || state.gameOver) return;
+    if (state.attacker !== 'ai') return;
+    if (!tableHasUndefended()) return;
+    const target = state.tablePairs.find(p => p.defense == null)?.attack;
+    if (target) {
+      state.memory.playerDislikeScore[target.suit] = (state.memory.playerDislikeScore[target.suit] || 0) + 1;
+    }
+    setMessage('Вы берёте карты.');
+    await defenderTakes(state.player);
+  });
+  el.takeBtn2.addEventListener('click', async () => {
+    if (state.isDealing || state.gameOver) return;
+    if (state.attacker !== 'ai') return;
+    if (!tableHasUndefended()) return;
+    const target = state.tablePairs.find(p => p.defense == null)?.attack;
+    if (target) {
+      state.memory.playerDislikeScore[target.suit] = (state.memory.playerDislikeScore[target.suit] || 0) + 1;
+    }
+    setMessage('Вы берёте карты.');
+    await defenderTakes(state.player);
+  });
+  el.resetScoreBtn.addEventListener('click', () => {
+    state.playerScore = 0; state.aiScore = 0; updateScoreBoard(); setMessage('Счёт сброшен.');
+  });
+  el.peekBtn.addEventListener('click', () => usePeek());
+  el.swapBtn.addEventListener('click', async () => { await useSwapHand(); });
+  el.transferModeChk.addEventListener('change', (e) => {
+    state.transferMode = !!e.target.checked;
+    setMessage(state.transferMode ? 'Режим: Переводной' : 'Режим: Подкидной');
+    updateUI();
+  });
+  // removed shuffle and advisor handlers
+  el.fastBtn.addEventListener('click', () => {
+    state.fastDeal = !state.fastDeal;
+    el.fastBtn.textContent = `Быстрая раздача: ${state.fastDeal ? 'вкл' : 'выкл'}`;
+  });
+  // shuffle removed
+
+  // Init
+  setMessage('Нажмите «Новая игра», чтобы начать. Доступны суперсилы (1 раз за игру) и режим «Переводной».');
+  updateUI();
+
+  // Collapsible groups: toggle on title click
+  function wireGroupCollapsing() {
+    const groups = document.querySelectorAll('.toolbar .group');
+    groups.forEach((g) => {
+      const title = g.querySelector('.title');
+      if (!title) return;
+      title.addEventListener('click', (e) => {
+        // avoid toggling when clicking inner controls inside title later
+        g.classList.toggle('collapsed');
+      });
+    });
+  }
+  wireGroupCollapsing();
+
+  // Mobile default: collapse all except game
+  function applyMobileDefaults() {
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    if (!isMobile) return;
+    const groups = document.querySelectorAll('.toolbar .group');
+    groups.forEach((g) => {
+      if (g.id === 'group-game') return;
+      g.classList.add('collapsed');
+    });
+  }
+  applyMobileDefaults();
+
+})();
+</script>
+</body>
+</html>
