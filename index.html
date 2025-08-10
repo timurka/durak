@@ -448,6 +448,10 @@
     playerScore: 0,
     aiScore: 0,
     isDealing: false,
+    // Dealing resume context
+    dealContext: null, // 'initial' | 'refill' | null
+    dealAttackerFirst: true,
+    postDeal: null, // { type: 'successfulDefense' | 'defenderTakes' } | null
     // Superpowers
     superUsed: false,
     peekActive: false,
@@ -874,7 +878,12 @@
         superUsed: state.superUsed,
         peekActive: state.peekActive,
         transferMode: state.transferMode,
-        fastDeal: state.fastDeal
+        fastDeal: state.fastDeal,
+        // dealing-resume fields
+        isDealing: state.isDealing,
+        dealContext: state.dealContext,
+        dealAttackerFirst: state.dealAttackerFirst,
+        postDeal: state.postDeal
       };
       // Store into localStorage (primary) and cookie as a graceful fallback
       localStorage.setItem('durak_state', JSON.stringify(payload));
@@ -909,6 +918,11 @@
       state.peekActive = !!saved.peekActive;
       state.transferMode = !!saved.transferMode;
       state.fastDeal = !!saved.fastDeal;
+      // dealing-resume fields
+      state.isDealing = !!saved.isDealing;
+      state.dealContext = saved.dealContext || null;
+      state.dealAttackerFirst = saved.dealAttackerFirst !== undefined ? !!saved.dealAttackerFirst : true;
+      state.postDeal = saved.postDeal || null;
       // ensure hands are sorted under current trump
       sortHand(state.player.hand);
       sortHand(state.ai.hand);
@@ -1214,24 +1228,36 @@
   }
   async function initialDealAnimated() {
     state.isDealing = true;
+    state.dealContext = 'initial';
     updateUI();
-    for (let i=0; i<HAND_SIZE; i++) {
+    // Determine how many already dealt (resume support)
+    const alreadyP = state.player.hand.length;
+    const alreadyA = state.ai.hand.length;
+    const startI = Math.max(alreadyP, alreadyA);
+    for (let i = startI; i < HAND_SIZE; i++) {
       if (state.deck.length === 0) break;
       await animateDealOne(state.player);
       if (state.deck.length === 0) break;
       await animateDealOne(state.ai);
     }
     state.isDealing = false;
+    state.dealContext = null;
     updateUI();
   }
   async function drawUpToSixAnimated(attackerFirst = true) {
     state.isDealing = true;
+    state.dealContext = 'refill';
+    state.dealAttackerFirst = attackerFirst;
     updateUI();
     const atk = state.attacker === 'player' ? state.player : state.ai;
     const def = state.attacker === 'player' ? state.ai : state.player;
 
     async function drawTo(target, n) {
-      for (let i=0; i<n; i++) {
+      const missing = Math.max(0, n);
+      const already = Math.max(0, target.hand.length);
+      // We just draw n cards, but target.hand could already be partially refilled before reload
+      let toDraw = missing;
+      for (let i = 0; i < toDraw; i++) {
         if (state.deck.length === 0) break;
         await animateDealOne(target);
       }
@@ -1242,6 +1268,7 @@
     else { await drawTo(def, needD); await drawTo(atk, needA); }
 
     state.isDealing = false;
+    state.dealContext = null;
     updateUI();
   }
 
@@ -1708,6 +1735,30 @@
     setMessage('Нажмите «Новая игра», чтобы начать. Доступны суперсилы (1 раз за игру) и режим «Переводной».');
   }
   updateUI();
+
+  // If we restored during dealing, continue it
+  if (restored && state.isDealing && state.dealContext) {
+    if (state.dealContext === 'initial') {
+      initialDealAnimated().then(()=>{
+        if (state.phase === 'between' || state.phase === 'idle') {
+          // Likely in middle of startGame flow; continue selection of attacker
+          determineFirstAttacker();
+          state.phase = (state.attacker === 'player') ? 'attack' : 'ai_turn';
+          setMessage(state.attacker === 'player' ? 'Ваш ход: сыграйте любую карту для атаки.' : 'Ход ИИ: ожидайте.');
+          updateUI();
+          if (state.attacker === 'ai') setTimeout(aiTurn, 600);
+        }
+      });
+    } else if (state.dealContext === 'refill') {
+      drawUpToSixAnimated(state.dealAttackerFirst).then(()=>{
+        if (state.postDeal && state.postDeal.type === 'successfulDefense') {
+          endBoutSuccessfulDefense();
+        } else if (state.postDeal && state.postDeal.type === 'defenderTakes') {
+          defenderTakes(state.attacker === 'player' ? state.ai : state.player);
+        }
+      });
+    }
+  }
 
   // Collapsible groups: toggle on title click
   function wireGroupCollapsing() {
