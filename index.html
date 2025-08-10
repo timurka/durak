@@ -439,7 +439,8 @@
     trumpSuit: null,
     trumpRefRank: null,
     // Double trump mode
-    doubleTrumpMode: false,
+    doubleTrumpActive: false,   // applies to current round only
+    doubleTrumpPlanned: false,  // checkbox preference, applies on next New Game
     secondTrumpCard: null,
     secondTrumpRevealed: false,
     prevTrumpSuit: null,
@@ -555,7 +556,7 @@
       }
       // If double-trump, ensure second trump is not an Ace either; position it at index 1
       let secondTrumpCard = null;
-      if (state.doubleTrumpMode && d.length >= 2) {
+      if (state.doubleTrumpActive && d.length >= 2) {
         let idxSecond = d.findIndex((c, i) => i !== 0 && c.rank !== 'Т');
         if (idxSecond === -1) idxSecond = 1; // fallback if all Aces but one
         if (idxSecond !== 1) {
@@ -579,7 +580,7 @@
     if (idxTrump === -1) idxTrump = 0;
     if (idxTrump !== 0) { const tmp = d[0]; d[0] = d[idxTrump]; d[idxTrump] = tmp; }
     let secondTrumpCard = null;
-    if (state.doubleTrumpMode && d.length >= 2) {
+    if (state.doubleTrumpActive && d.length >= 2) {
       let idxSecond = d.findIndex((c, i) => i !== 0 && c.rank !== 'Т');
       if (idxSecond === -1) idxSecond = 1;
       if (idxSecond !== 1) { const t2 = d[1]; d[1] = d[idxSecond]; d[idxSecond] = t2; }
@@ -892,7 +893,8 @@
         trumpRefRank: state.trumpRefRank,
         prevTrumpSuit: state.prevTrumpSuit,
         prevTrumpRefRank: state.prevTrumpRefRank,
-        doubleTrumpMode: state.doubleTrumpMode,
+        doubleTrumpActive: state.doubleTrumpActive,
+        doubleTrumpPlanned: state.doubleTrumpPlanned,
         secondTrumpCard: state.secondTrumpCard,
         secondTrumpRevealed: state.secondTrumpRevealed,
         player: state.player,
@@ -931,7 +933,14 @@
       state.trumpRefRank = saved.trumpRefRank || null;
       state.prevTrumpSuit = saved.prevTrumpSuit || null;
       state.prevTrumpRefRank = saved.prevTrumpRefRank || null;
-      state.doubleTrumpMode = !!saved.doubleTrumpMode;
+      if (saved.doubleTrumpActive !== undefined || saved.doubleTrumpPlanned !== undefined) {
+        state.doubleTrumpActive = !!saved.doubleTrumpActive;
+        state.doubleTrumpPlanned = !!saved.doubleTrumpPlanned;
+      } else if (saved.doubleTrumpMode !== undefined) {
+        // backward compatibility
+        state.doubleTrumpActive = !!saved.doubleTrumpMode;
+        state.doubleTrumpPlanned = !!saved.doubleTrumpMode;
+      }
       state.secondTrumpCard = saved.secondTrumpCard || null;
       state.secondTrumpRevealed = !!saved.secondTrumpRevealed;
       state.player = saved.player || { hand: [], name: 'Игрок' };
@@ -973,7 +982,7 @@
     // Trump badge: highlight when double-trump mode is ON; flash once on reveal
     const badgeWrapper = document.querySelector('.trump-badge');
     if (badgeWrapper) {
-      badgeWrapper.classList.toggle('double-on', !!state.doubleTrumpMode);
+      badgeWrapper.classList.toggle('double-on', !!state.doubleTrumpActive);
       if (state.secondTrumpRevealed && !badgeWrapper.classList.contains('flash')) {
         badgeWrapper.classList.add('flash');
       }
@@ -1094,8 +1103,8 @@
         el.deckPile.appendChild(back);
       }
       const trumpRef = { suit: state.trumpSuit, rank: state.trumpRefRank || '6', value: RANK_VALUE[state.trumpRefRank || '6'] };
-      // If double-trump mode is on and second trump is not revealed yet, show a hidden card under the trump (face-down)
-      if (state.doubleTrumpMode && !state.secondTrumpRevealed) {
+      // If double-trump mode is active and second trump is not revealed yet, show a hidden card under the trump (face-down)
+      if (state.doubleTrumpActive && !state.secondTrumpRevealed) {
         const hidden = renderCard(null, false);
         hidden.classList.add('hidden-under-trump');
         hidden.style.transform = 'rotate(90deg) translate(8px, 16px)';
@@ -1107,7 +1116,7 @@
       el.deckPile.appendChild(t);
     }
     el.deckCount.textContent = state.deck.length;
-    el.trumpSuit.textContent = state.prevTrumpSuit && state.prevTrumpRefRank
+    el.trumpSuit.textContent = (state.doubleTrumpActive && state.secondTrumpRevealed && state.prevTrumpSuit && state.prevTrumpRefRank)
       ? `${state.trumpSuit || '—'} (был ${state.prevTrumpRefRank}${state.prevTrumpSuit})`
       : (state.trumpSuit || '—');
     el.discardCount.textContent = state.discard.length;
@@ -1145,7 +1154,7 @@
     maybeRevealSecondTrump();
     // Sync mode toggles from state
     if (el.transferModeChk) el.transferModeChk.checked = !!state.transferMode;
-    if (el.doubleTrumpChk) el.doubleTrumpChk.checked = !!state.doubleTrumpMode;
+    if (el.doubleTrumpChk) el.doubleTrumpChk.checked = !!state.doubleTrumpPlanned;
     setBadges();
     updateScoreBoard();
     renderDeck();
@@ -1385,6 +1394,10 @@
 
   async function startGame() {
     if (state.isDealing) return;
+    // Apply planned double-trump setting to this round and reset previous trump markers
+    state.doubleTrumpActive = !!state.doubleTrumpPlanned;
+    state.prevTrumpSuit = null;
+    state.prevTrumpRefRank = null;
     // Prepare deck and trump with redeal rule applied
     const prep = prepareDeckForInitialDeal();
     state.deck = prep.deck;
@@ -1428,7 +1441,7 @@
 
   // Double trump: reveal hidden trump and replace the suit when deck empties
   function maybeRevealSecondTrump() {
-    if (!state.doubleTrumpMode) return;
+    if (!state.doubleTrumpActive) return;
     if (state.secondTrumpRevealed) return;
     if (state.deck.length === 0 && state.secondTrumpCard) {
       // Save previous trump to display
@@ -1733,8 +1746,8 @@
     updateUI();
   });
   el.doubleTrumpChk.addEventListener('change', (e) => {
-    state.doubleTrumpMode = !!e.target.checked;
-    setMessage(state.doubleTrumpMode ? 'Режим: Двойной козырь (вступит со следующей новой игры)' : 'Режим: Двойной козырь выключен');
+    state.doubleTrumpPlanned = !!e.target.checked;
+    setMessage(state.doubleTrumpPlanned ? 'Режим: Двойной козырь будет применён со следующей новой игры' : 'Режим: Двойной козырь выключен (вступит со следующей новой игры)');
   });
   // removed shuffle and advisor handlers
   el.fastBtn.addEventListener('click', () => {
@@ -1858,7 +1871,7 @@
       if (candidates.length === 0) break;
       const addCard = chooseLowest(candidates, true);
       removeFromHand(state.ai, addCard.id);
-      state.tablePairs.push({ attack: addCard, defense: null });
+      state.tablePairs.push({ attack: addCard, defense: null }); й
       addedAny = true;
       updateUI();
       await sleep(320);
