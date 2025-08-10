@@ -135,6 +135,12 @@
     color: var(--accent);
     font-weight: 700;
   }
+  .trump-badge.double-on {
+    text-shadow: 0 0 8px rgba(255,209,102,0.6);
+  }
+  .trump-badge.double-on::after {
+    content: ' ×2';
+  }
   .trump-badge.flash { animation: pulseBadge 0.6s ease 1; }
   @keyframes pulseBadge {
     0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,209,102,0.0); }
@@ -465,8 +471,7 @@
       lastMashTs: 0
     },
     fastDeal: false,
-    boutStartDefHand: null,
-    dealSpeedIndex: null
+    boutStartDefHand: null
   };
 
   // DOM
@@ -905,8 +910,7 @@
         isDealing: state.isDealing,
         dealContext: state.dealContext,
         dealAttackerFirst: state.dealAttackerFirst,
-        postDeal: state.postDeal,
-        dealSpeedIndex: state.dealSpeedIndex
+        postDeal: state.postDeal
       };
       // Store into localStorage (primary) and cookie as a graceful fallback
       localStorage.setItem('durak_state', JSON.stringify(payload));
@@ -949,7 +953,6 @@
       // ensure hands are sorted under current trump
       sortHand(state.player.hand);
       sortHand(state.ai.hand);
-      state.dealSpeedIndex = saved.dealSpeedIndex || null;
       return true;
     } catch(e) { return false; }
   }
@@ -966,11 +969,11 @@
     }
     el.statusBadge.textContent = 'Статус: ' + phaseTitle;
     el.superBadge.textContent = 'Суперсила: ' + (state.superUsed ? 'использована' : 'доступна');
-    // flash badge on second trump reveal only if double-trump mode is ON
+    // Trump badge: highlight when double-trump mode is ON; flash once on reveal
     const badgeWrapper = document.querySelector('.trump-badge');
     if (badgeWrapper) {
       badgeWrapper.classList.toggle('double-on', !!state.doubleTrumpMode);
-      if (state.doubleTrumpMode && state.secondTrumpRevealed && !badgeWrapper.classList.contains('flash')) {
+      if (state.secondTrumpRevealed && !badgeWrapper.classList.contains('flash')) {
         badgeWrapper.classList.add('flash');
       }
     }
@@ -1090,7 +1093,7 @@
         el.deckPile.appendChild(back);
       }
       const trumpRef = { suit: state.trumpSuit, rank: state.trumpRefRank || '6', value: RANK_VALUE[state.trumpRefRank || '6'] };
-      // Show hidden card only when double-trump is enabled and not yet revealed
+      // If double-trump mode is on and second trump is not revealed yet, show a hidden card under the trump (face-down)
       if (state.doubleTrumpMode && !state.secondTrumpRevealed) {
         const hidden = renderCard(null, false);
         hidden.classList.add('hidden-under-trump');
@@ -1140,6 +1143,9 @@
     el.tableRoot.classList.toggle('busy', state.isDealing);
     // Reveal second trump if enabled and deck is empty
     maybeRevealSecondTrump();
+    // Sync mode toggles from state
+    if (el.transferModeChk) el.transferModeChk.checked = !!state.transferMode;
+    if (el.doubleTrumpChk) el.doubleTrumpChk.checked = !!state.doubleTrumpMode;
     setBadges();
     updateScoreBoard();
     renderDeck();
@@ -1162,11 +1168,11 @@
       const rot = (Math.random() - 0.5) * 14;
       deckEl.style.transition = 'transform 0.06s ease';
       deckEl.style.transform = `translate(${dx}px, ${dy}px) rotate(${rot}deg)`;
-      await sleep(getDealDelay(60));
+      await sleep(60);
     }
     deckEl.style.transition = 'transform 0.15s ease';
     deckEl.style.transform = `translate(0,0) rotate(0deg)`;
-    await sleep(getDealDelay(150));
+    await sleep(150);
   }
   function createFlyingCardEl(faceUp, card) {
     const elCard = document.createElement('div');
@@ -1203,7 +1209,7 @@
     const dx = handRect.cx - startX - (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-w'))/2);
     const dy = handRect.cy - startY - (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-h'))/2);
 
-    await sleep(getDealDelay(10));
+    await sleep(state.fastDeal ? 0 : 10);
     fly.style.transform = `translate(${dx}px, ${dy}px)`;
     await new Promise(resolve => fly.addEventListener('transitionend', resolve, { once: true }));
 
@@ -1211,7 +1217,7 @@
     sortHand(toWho.hand);
     fly.remove();
     updateUI();
-    await sleep(getDealDelay(60));
+    await sleep(state.fastDeal ? 0 : 60);
     return true;
   }
 
@@ -1720,9 +1726,8 @@
   });
   // removed shuffle and advisor handlers
   el.fastBtn.addEventListener('click', () => {
-    state.dealSpeedIndex = ((state.dealSpeedIndex || 0) + 1) % dealSpeeds.length;
-    const label = ['x1','x1.5','x2','x4'][state.dealSpeedIndex];
-    el.fastBtn.textContent = `Скорость: ${label}`;
+    state.fastDeal = !state.fastDeal;
+    el.fastBtn.textContent = `Быстрая раздача: ${state.fastDeal ? 'вкл' : 'выкл'}`;
   });
   // shuffle removed
 
