@@ -513,6 +513,52 @@
     }
     return a;
   }
+  // Enforce rule: on initial deal, neither player may get 5+ cards of the same suit
+  function hasFiveOrMoreSameSuit(cards) {
+    const counts = { '♠': 0, '♥': 0, '♦': 0, '♣': 0 };
+    for (const c of cards) counts[c.suit] = (counts[c.suit] || 0) + 1;
+    return counts['♠'] >= 5 || counts['♥'] >= 5 || counts['♦'] >= 5 || counts['♣'] >= 5;
+  }
+  function violatesMonoSuitOnInitialDeal(preparedDeck) {
+    // preparedDeck is the deck used for dealing (after reserving trump(s));
+    // we simulate alternating pops: player, ai, player, ai ... (HAND_SIZE cards each)
+    const tmp = preparedDeck.slice();
+    const p = [];
+    const a = [];
+    for (let i = 0; i < HAND_SIZE; i++) {
+      if (tmp.length === 0) break;
+      p.push(tmp[tmp.length - 1]); tmp.pop();
+      if (tmp.length === 0) break;
+      a.push(tmp[tmp.length - 1]); tmp.pop();
+    }
+    return hasFiveOrMoreSameSuit(p) || hasFiveOrMoreSameSuit(a);
+  }
+  function prepareDeckForInitialDeal(maxAttempts = 300) {
+    // Try multiple shuffles until initial hands do not violate the 5+ same-suit rule
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const d = shuffle(makeDeck().slice());
+      const trump = d[0];
+      const working = d.slice();
+      let secondTrumpCard = null;
+      if (state.doubleTrumpMode && working.length >= 2) {
+        secondTrumpCard = working[1];
+        working.splice(1, 1); // keep hidden until reveal
+      }
+      if (!violatesMonoSuitOnInitialDeal(working)) {
+        return { deck: working, trump, secondTrumpCard };
+      }
+    }
+    // Fallback (extremely unlikely): return last attempt even if violates
+    const d = shuffle(makeDeck().slice());
+    const trump = d[0];
+    const working = d.slice();
+    let secondTrumpCard = null;
+    if (state.doubleTrumpMode && working.length >= 2) {
+      secondTrumpCard = working[1];
+      working.splice(1, 1);
+    }
+    return { deck: working, trump, secondTrumpCard };
+  }
   function sortHand(hand) {
     return hand.sort((c1, c2) => {
       const t1 = (c1.suit === state.trumpSuit) ? 1 : 0;
@@ -1272,20 +1318,16 @@
 
   async function startGame() {
     if (state.isDealing) return;
-    state.deck = shuffle(makeDeck());
-    const trumpCard = state.deck[0];
+    // Prepare deck and trump with redeal rule applied
+    const prep = prepareDeckForInitialDeal();
+    state.deck = prep.deck;
+    const trumpCard = prep.trump;
     state.trumpSuit = trumpCard.suit;
     state.trumpRefRank = trumpCard.rank;
 
-    // Prepare double trump if mode enabled (reserve hidden card under trump)
-    state.secondTrumpCard = null;
+    // Double trump prep
+    state.secondTrumpCard = prep.secondTrumpCard || null;
     state.secondTrumpRevealed = false;
-    if (state.doubleTrumpMode && state.deck.length >= 2) {
-      // Card under the face-up trump (second from bottom)
-      state.secondTrumpCard = state.deck[1];
-      // Remove it from the dealing deck to keep it hidden until reveal
-      state.deck.splice(1, 1);
-    }
 
     state.discard = [];
     state.tablePairs = [];
