@@ -141,7 +141,7 @@
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: var(--card-w);
-    justify-content: center;
+    justify-content: start;
     gap: 8px;
     padding: 10px 16px;
     min-height: calc(var(--card-h) + 20px);
@@ -150,6 +150,8 @@
     cursor: grab;
     -webkit-overflow-scrolling: touch;
     scroll-behavior: smooth;
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
   }
   .hand.dragging { cursor: grabbing; }
   .card {
@@ -273,20 +275,18 @@
 
   /* Phones portrait: smaller cards, 3 columns on table */
   @media (max-width: 480px) and (orientation: portrait) {
-    :root { --card-w: 58px; --card-h: 88px; }
+    :root { --card-w: 56px; --card-h: 84px; }
     .table-pairs { grid-template-columns: repeat(3, var(--card-w)); gap: 10px 10px; }
-    .hand { gap: 6px; padding: 6px; padding-right: calc(var(--card-w) + 18px); min-height: calc(var(--card-h) + 10px); scroll-snap-type: x proximity; }
-    .hand .card { scroll-snap-align: end; }
+    .hand { justify-content: start; gap: 6px; padding: 8px 22px; padding-right: 24px; min-height: calc(var(--card-h) + 10px); }
     .opponent-area .hand { min-height: calc(var(--card-h) * 0.8); }
     .deck-zone { right: 8px; }
   }
 
   /* Phones landscape and small tablets: 4 columns on table */
   @media (max-width: 768px) and (orientation: landscape) {
-    :root { --card-w: 68px; --card-h: 102px; }
+    :root { --card-w: 66px; --card-h: 100px; }
     .table-pairs { grid-template-columns: repeat(4, var(--card-w)); gap: 12px 12px; }
-    .hand { gap: 6px; padding-right: calc(var(--card-w) + 18px); scroll-snap-type: x proximity; }
-    .hand .card { scroll-snap-align: end; }
+    .hand { justify-content: start; gap: 6px; padding: 8px 22px; padding-right: 24px; }
     .deck-zone { right: 10px; }
   }
 
@@ -859,6 +859,9 @@
         el.opHand.appendChild(back);
       }
     }
+    // ensure ends are visible on mobile by padding shadows
+    el.playerHand.style.scrollPaddingLeft = '16px';
+    el.playerHand.style.scrollPaddingRight = '16px';
   }
   function renderTable() {
     el.pairs.innerHTML = '';
@@ -1431,6 +1434,14 @@
     container.addEventListener('mousemove', (e) => {
       if (!isDown) return; e.preventDefault(); const x = e.pageX - container.offsetLeft; const walk = (x - startX) * 1; container.scrollLeft = scrollLeft - walk;
     });
+    // Touch support for Android/iOS
+    let tStartX = 0, tScrollLeft = 0;
+    container.addEventListener('touchstart', (e) => {
+      const t = e.touches[0]; tStartX = t.clientX; tScrollLeft = container.scrollLeft;
+    }, { passive: true });
+    container.addEventListener('touchmove', (e) => {
+      if (e.touches.length !== 1) return; const t = e.touches[0]; const dx = t.clientX - tStartX; container.scrollLeft = tScrollLeft - dx;
+    }, { passive: true });
     container.addEventListener('wheel', (e) => {
       if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
         container.scrollLeft += e.deltaY; e.preventDefault();
