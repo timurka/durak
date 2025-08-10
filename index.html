@@ -135,6 +135,12 @@
     color: var(--accent);
     font-weight: 700;
   }
+  .trump-badge.flash { animation: pulseBadge 0.6s ease 1; }
+  @keyframes pulseBadge {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,209,102,0.0); }
+    50% { transform: scale(1.06); box-shadow: 0 0 12px 2px rgba(255,209,102,0.7); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,209,102,0.0); }
+  }
 
   /* Cards */
   .hand {
@@ -168,6 +174,12 @@
   .card.face-down {
     background: repeating-linear-gradient(45deg, #0e3b27, #0e3b27 6px, #12563a 6px, #12563a 12px);
     border-color: #0b2a1b;
+  }
+  /* Hidden second trump under face-up trump: make it more visible */
+  .card.face-down.hidden-under-trump {
+    background: repeating-linear-gradient(45deg, #0e3b27, #0e3b27 6px, #1b7c50 6px, #1b7c50 12px);
+    border-color: #1b7c50;
+    box-shadow: 0 0 0 2px rgba(255,209,102,0.55) inset, 0 2px 8px rgba(0,0,0,0.35);
   }
   .card .rank {
     position: absolute;
@@ -350,6 +362,10 @@
           <input type="checkbox" id="transferModeChk"/>
           Переводной
         </label>
+        <label class="switch">
+          <input type="checkbox" id="doubleTrumpChk"/>
+          Двойной козырь
+        </label>
         <button class="btn small toggle" id="fastBtn">Раздача: норм</button>
           <span class="title" style="margin-left:6px">Размер карт</span>
           <button class="btn small secondary" id="zoomOutBtn" title="Уменьшить карты">−</button>
@@ -394,9 +410,9 @@
 </div>
 
 <footer>
-  <details id="rulesDetails" open>
+  <details id="rulesDetails">
     <summary>Правила</summary>
-    <div style="margin-top:6px">36 карт (6–Туз). Козырь — масть нижней карты колоды. Добор до 6 (сначала атакующий). Защитник может взять. Атакующий — «бито». Подкидка: на первом ходе взятки максимум 5 карт; далее — до последней карты защитника (в руке должна остаться как минимум 1 карта). «Переводной» режим: защитник вместо побития может перевести, добавив карту того же ранга (если укладывается в лимиты), стороны меняются ролями. Во время раздачи доступна кнопка «Перетасовать».</div>
+    <div style="margin-top:6px">36 карт (6–Туз). Козырь — масть нижней карты колоды. Добор до 6 (сначала атакующий). Защитник может взять. Атакующий — «бито». Подкидка: на первом ходе взятки максимум 5 карт; далее — до последней карты защитника (в руке должна остаться как минимум 1 карта). «Переводной» режим: защитник вместо побития может перевести, добавив карту того же ранга (если укладывается в лимиты), стороны меняются ролями. «Двойной козырь»: под козырной картой лежит скрытая карта; когда из колоды вышли все карты (включая первый козырь), она вскрывается и её масть становится новым козырем.</div>
   </details>
 </footer>
 
@@ -416,6 +432,13 @@
     tablePairs: [], // [{attack: card, defense: card|null}]
     trumpSuit: null,
     trumpRefRank: null,
+    // Double trump mode
+    doubleTrumpMode: false,
+    secondTrumpCard: null,
+    secondTrumpRevealed: false,
+    prevTrumpSuit: null,
+    prevTrumpRefRank: null,
+    revealAnimating: false,
     player: { hand: [], name: 'Игрок' },
     ai: { hand: [], name: 'ИИ' },
     attacker: 'player', // 'player' or 'ai'
@@ -465,6 +488,7 @@
     swapBtn: document.getElementById('swapBtn'),
     superBadge: document.getElementById('superBadge'),
     transferModeChk: document.getElementById('transferModeChk'),
+    doubleTrumpChk: document.getElementById('doubleTrumpChk'),
     rulesDetails: document.getElementById('rulesDetails'),
     endAttackBtn2: document.getElementById('endAttackBtn2'),
     takeBtn2: document.getElementById('takeBtn2'),
@@ -762,6 +786,87 @@
       setTimeout(()=> t.remove(), 320);
     }, timeout);
   }
+
+  // Persistence (cookies)
+  function setCookie(name, value, days=365) {
+    const d = new Date();
+    d.setTime(d.getTime() + (days*24*60*60*1000));
+    const expires = 'expires=' + d.toUTCString();
+    document.cookie = name + '=' + encodeURIComponent(value) + ';' + expires + ';path=/';
+  }
+  function getCookie(name) {
+    const cname = name + '=';
+    const decoded = document.cookie;
+    const arr = decoded.split(';');
+    for (let c of arr) {
+      c = c.trim();
+      if (c.indexOf(cname) === 0) return decodeURIComponent(c.substring(cname.length, c.length));
+    }
+    return null;
+  }
+  function persistState() {
+    try {
+      const payload = {
+        deck: state.deck,
+        discard: state.discard,
+        tablePairs: state.tablePairs,
+        trumpSuit: state.trumpSuit,
+        trumpRefRank: state.trumpRefRank,
+        prevTrumpSuit: state.prevTrumpSuit,
+        prevTrumpRefRank: state.prevTrumpRefRank,
+        doubleTrumpMode: state.doubleTrumpMode,
+        secondTrumpCard: state.secondTrumpCard,
+        secondTrumpRevealed: state.secondTrumpRevealed,
+        player: state.player,
+        ai: state.ai,
+        attacker: state.attacker,
+        phase: state.phase,
+        message: state.message,
+        gameOver: state.gameOver,
+        playerScore: state.playerScore,
+        aiScore: state.aiScore,
+        superUsed: state.superUsed,
+        peekActive: state.peekActive,
+        transferMode: state.transferMode,
+        fastDeal: state.fastDeal
+      };
+      setCookie('durak_state', JSON.stringify(payload));
+    } catch(e) { /* ignore */ }
+  }
+  function tryRestoreState() {
+    try {
+      const raw = getCookie('durak_state');
+      if (!raw) return false;
+      const saved = JSON.parse(raw);
+      // shallow restore primitives and arrays
+      state.deck = saved.deck || [];
+      state.discard = saved.discard || [];
+      state.tablePairs = saved.tablePairs || [];
+      state.trumpSuit = saved.trumpSuit || null;
+      state.trumpRefRank = saved.trumpRefRank || null;
+      state.prevTrumpSuit = saved.prevTrumpSuit || null;
+      state.prevTrumpRefRank = saved.prevTrumpRefRank || null;
+      state.doubleTrumpMode = !!saved.doubleTrumpMode;
+      state.secondTrumpCard = saved.secondTrumpCard || null;
+      state.secondTrumpRevealed = !!saved.secondTrumpRevealed;
+      state.player = saved.player || { hand: [], name: 'Игрок' };
+      state.ai = saved.ai || { hand: [], name: 'ИИ' };
+      state.attacker = saved.attacker || 'player';
+      state.phase = saved.phase || 'idle';
+      state.message = saved.message || '';
+      state.gameOver = !!saved.gameOver;
+      state.playerScore = saved.playerScore || 0;
+      state.aiScore = saved.aiScore || 0;
+      state.superUsed = !!saved.superUsed;
+      state.peekActive = !!saved.peekActive;
+      state.transferMode = !!saved.transferMode;
+      state.fastDeal = !!saved.fastDeal;
+      // ensure hands are sorted under current trump
+      sortHand(state.player.hand);
+      sortHand(state.ai.hand);
+      return true;
+    } catch(e) { return false; }
+  }
   function setBadges() {
     el.turnBadge.textContent = 'Ходит: ' + (state.attacker === 'player' ? 'Вы' : 'ИИ');
     let phaseTitle = '';
@@ -775,6 +880,15 @@
     }
     el.statusBadge.textContent = 'Статус: ' + phaseTitle;
     el.superBadge.textContent = 'Суперсила: ' + (state.superUsed ? 'использована' : 'доступна');
+    // flash badge on second trump reveal
+    const badgeWrapper = document.querySelector('.trump-badge');
+    if (badgeWrapper && state.secondTrumpRevealed) {
+      badgeWrapper.classList.remove('flash');
+      // retrigger animation
+      // eslint-disable-next-line no-unused-expressions
+      void badgeWrapper.offsetWidth;
+      badgeWrapper.classList.add('flash');
+    }
   }
   function updateScoreBoard() {
     el.playerScore.textContent = state.playerScore;
@@ -891,12 +1005,22 @@
         el.deckPile.appendChild(back);
       }
       const trumpRef = { suit: state.trumpSuit, rank: state.trumpRefRank || '6', value: RANK_VALUE[state.trumpRefRank || '6'] };
+      // If double-trump mode is on and second trump is not revealed yet, show a hidden card under the trump (face-down)
+      if (state.doubleTrumpMode && !state.secondTrumpRevealed) {
+        const hidden = renderCard(null, false);
+        hidden.classList.add('hidden-under-trump');
+        hidden.style.transform = 'rotate(90deg) translate(8px, 16px)';
+        hidden.style.opacity = '0.95';
+        el.deckPile.appendChild(hidden);
+      }
       const t = renderCard(trumpRef, true);
       t.style.transform = 'rotate(90deg) translate(16px, 26px)';
       el.deckPile.appendChild(t);
     }
     el.deckCount.textContent = state.deck.length;
-    el.trumpSuit.textContent = state.trumpSuit || '—';
+    el.trumpSuit.textContent = state.prevTrumpSuit && state.prevTrumpRefRank
+      ? `${state.trumpSuit || '—'} (был ${state.prevTrumpRefRank}${state.prevTrumpSuit})`
+      : (state.trumpSuit || '—');
     el.discardCount.textContent = state.discard.length;
   }
   function updateButtons() {
@@ -929,6 +1053,8 @@
   }
   function updateUI() {
     el.tableRoot.classList.toggle('busy', state.isDealing);
+    // Reveal second trump if enabled and deck is empty
+    maybeRevealSecondTrump();
     setBadges();
     updateScoreBoard();
     renderDeck();
@@ -936,6 +1062,7 @@
     renderHands();
     updateButtons();
     updateAdvisorToast();
+    persistState();
   }
 
   // Animations
@@ -1001,6 +1128,45 @@
     updateUI();
     await sleep(state.fastDeal ? 0 : 60);
     return true;
+  }
+
+  // Animation: reveal second trump with flip and fly to player hand (visual only)
+  async function animateRevealSecondTrump(card) {
+    state.revealAnimating = true;
+    // create card at deck trump position
+    const deckRect = getCenterRect(el.deckPile);
+    const startX = deckRect.cx - (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-w'))/2);
+    const startY = deckRect.cy - (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-h'))/2);
+    const fly = createFlyingCardEl(true, card);
+    fly.style.left = `${startX}px`;
+    fly.style.top = `${startY}px`;
+    fly.style.transform = 'rotate(90deg) translate(12px, 18px)';
+    fly.style.transition = 'transform 0.28s ease, opacity 0.28s ease';
+    fly.style.transformOrigin = 'center center';
+    document.body.appendChild(fly);
+
+    // initial flip-in place
+    await sleep(10);
+    fly.style.transform = 'rotate(0deg) translate(0px, 0px) scale(1)';
+    await new Promise(resolve => fly.addEventListener('transitionend', resolve, { once: true }));
+
+    // fly towards player hand center
+    const handEl = el.playerHand;
+    const handRect = getCenterRect(handEl);
+    const dx = handRect.cx - startX - (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-w'))/2);
+    const dy = handRect.cy - startY - (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-h'))/2);
+    await sleep(10);
+    fly.style.transform = `translate(${dx}px, ${dy}px) rotate(6deg)`;
+    fly.style.opacity = '0.9';
+    await new Promise(resolve => fly.addEventListener('transitionend', resolve, { once: true }));
+
+    // fade out near hand (not adding to hand logically)
+    fly.style.transition = 'opacity 0.18s ease, transform 0.18s ease';
+    fly.style.opacity = '0';
+    fly.style.transform += ' scale(0.96)';
+    await new Promise(resolve => setTimeout(resolve, 190));
+    fly.remove();
+    state.revealAnimating = false;
   }
   async function initialDealAnimated() {
     state.isDealing = true;
@@ -1113,6 +1279,16 @@
     state.trumpSuit = trumpCard.suit;
     state.trumpRefRank = trumpCard.rank;
 
+    // Prepare double trump if mode enabled (reserve hidden card under trump)
+    state.secondTrumpCard = null;
+    state.secondTrumpRevealed = false;
+    if (state.doubleTrumpMode && state.deck.length >= 2) {
+      // Card under the face-up trump (second from bottom)
+      state.secondTrumpCard = state.deck[1];
+      // Remove it from the dealing deck to keep it hidden until reveal
+      state.deck.splice(1, 1);
+    }
+
     state.discard = [];
     state.tablePairs = [];
     state.player.hand = [];
@@ -1141,6 +1317,27 @@
     updateUI();
 
     if (state.attacker === 'ai') setTimeout(aiTurn, 600);
+  }
+
+  // Double trump: reveal hidden trump and replace the suit when deck empties
+  function maybeRevealSecondTrump() {
+    if (!state.doubleTrumpMode) return;
+    if (state.secondTrumpRevealed) return;
+    if (state.deck.length === 0 && state.secondTrumpCard) {
+      // Save previous trump to display
+      state.prevTrumpSuit = state.trumpSuit;
+      state.prevTrumpRefRank = state.trumpRefRank;
+      // Switch trump to the hidden card
+      state.trumpSuit = state.secondTrumpCard.suit;
+      state.trumpRefRank = state.secondTrumpCard.rank;
+      state.secondTrumpRevealed = true;
+      // Animated reveal
+      animateRevealSecondTrump(state.secondTrumpCard).catch(()=>{});
+      showToast(`Вскрыт второй козырь: ${state.trumpRefRank}${state.trumpSuit} (был ${state.prevTrumpRefRank}${state.prevTrumpSuit})`);
+      // Re-sort hands to reflect new trump priority
+      sortHand(state.player.hand);
+      sortHand(state.ai.hand);
+    }
   }
 
   // Transfer logic helpers
@@ -1416,6 +1613,10 @@
     setMessage(state.transferMode ? 'Режим: Переводной' : 'Режим: Подкидной');
     updateUI();
   });
+  el.doubleTrumpChk.addEventListener('change', (e) => {
+    state.doubleTrumpMode = !!e.target.checked;
+    setMessage(state.doubleTrumpMode ? 'Режим: Двойной козырь (вступит со следующей новой игры)' : 'Режим: Двойной козырь выключен');
+  });
   // removed shuffle and advisor handlers
   el.fastBtn.addEventListener('click', () => {
     state.fastDeal = !state.fastDeal;
@@ -1462,7 +1663,10 @@
   });
 
   // Init
-  setMessage('Нажмите «Новая игра», чтобы начать. Доступны суперсилы (1 раз за игру) и режим «Переводной».');
+  const restored = tryRestoreState();
+  if (!restored) {
+    setMessage('Нажмите «Новая игра», чтобы начать. Доступны суперсилы (1 раз за игру) и режим «Переводной».');
+  }
   updateUI();
 
   // Collapsible groups: toggle on title click
