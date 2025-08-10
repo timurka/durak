@@ -830,12 +830,14 @@
         transferMode: state.transferMode,
         fastDeal: state.fastDeal
       };
+      // Store into localStorage (primary) and cookie as a graceful fallback
+      localStorage.setItem('durak_state', JSON.stringify(payload));
       setCookie('durak_state', JSON.stringify(payload));
     } catch(e) { /* ignore */ }
   }
   function tryRestoreState() {
     try {
-      const raw = getCookie('durak_state');
+      const raw = localStorage.getItem('durak_state') || getCookie('durak_state');
       if (!raw) return false;
       const saved = JSON.parse(raw);
       // shallow restore primitives and arrays
@@ -882,11 +884,7 @@
     el.superBadge.textContent = 'Суперсила: ' + (state.superUsed ? 'использована' : 'доступна');
     // flash badge on second trump reveal
     const badgeWrapper = document.querySelector('.trump-badge');
-    if (badgeWrapper && state.secondTrumpRevealed) {
-      badgeWrapper.classList.remove('flash');
-      // retrigger animation
-      // eslint-disable-next-line no-unused-expressions
-      void badgeWrapper.offsetWidth;
+    if (badgeWrapper && state.secondTrumpRevealed && !badgeWrapper.classList.contains('flash')) {
       badgeWrapper.classList.add('flash');
     }
   }
