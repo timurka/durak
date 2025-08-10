@@ -465,7 +465,8 @@
       lastMashTs: 0
     },
     fastDeal: false,
-    boutStartDefHand: null
+    boutStartDefHand: null,
+    dealSpeedIndex: null
   };
 
   // DOM
@@ -904,7 +905,8 @@
         isDealing: state.isDealing,
         dealContext: state.dealContext,
         dealAttackerFirst: state.dealAttackerFirst,
-        postDeal: state.postDeal
+        postDeal: state.postDeal,
+        dealSpeedIndex: state.dealSpeedIndex
       };
       // Store into localStorage (primary) and cookie as a graceful fallback
       localStorage.setItem('durak_state', JSON.stringify(payload));
@@ -947,6 +949,7 @@
       // ensure hands are sorted under current trump
       sortHand(state.player.hand);
       sortHand(state.ai.hand);
+      state.dealSpeedIndex = saved.dealSpeedIndex || null;
       return true;
     } catch(e) { return false; }
   }
@@ -963,10 +966,13 @@
     }
     el.statusBadge.textContent = 'Статус: ' + phaseTitle;
     el.superBadge.textContent = 'Суперсила: ' + (state.superUsed ? 'использована' : 'доступна');
-    // flash badge on second trump reveal
+    // flash badge on second trump reveal only if double-trump mode is ON
     const badgeWrapper = document.querySelector('.trump-badge');
-    if (badgeWrapper && state.secondTrumpRevealed && !badgeWrapper.classList.contains('flash')) {
-      badgeWrapper.classList.add('flash');
+    if (badgeWrapper) {
+      badgeWrapper.classList.toggle('double-on', !!state.doubleTrumpMode);
+      if (state.doubleTrumpMode && state.secondTrumpRevealed && !badgeWrapper.classList.contains('flash')) {
+        badgeWrapper.classList.add('flash');
+      }
     }
   }
   function updateScoreBoard() {
@@ -1084,7 +1090,7 @@
         el.deckPile.appendChild(back);
       }
       const trumpRef = { suit: state.trumpSuit, rank: state.trumpRefRank || '6', value: RANK_VALUE[state.trumpRefRank || '6'] };
-      // If double-trump mode is on and second trump is not revealed yet, show a hidden card under the trump (face-down)
+      // Show hidden card only when double-trump is enabled and not yet revealed
       if (state.doubleTrumpMode && !state.secondTrumpRevealed) {
         const hidden = renderCard(null, false);
         hidden.classList.add('hidden-under-trump');
@@ -1156,11 +1162,11 @@
       const rot = (Math.random() - 0.5) * 14;
       deckEl.style.transition = 'transform 0.06s ease';
       deckEl.style.transform = `translate(${dx}px, ${dy}px) rotate(${rot}deg)`;
-      await sleep(60);
+      await sleep(getDealDelay(60));
     }
     deckEl.style.transition = 'transform 0.15s ease';
     deckEl.style.transform = `translate(0,0) rotate(0deg)`;
-    await sleep(150);
+    await sleep(getDealDelay(150));
   }
   function createFlyingCardEl(faceUp, card) {
     const elCard = document.createElement('div');
@@ -1197,7 +1203,7 @@
     const dx = handRect.cx - startX - (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-w'))/2);
     const dy = handRect.cy - startY - (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-h'))/2);
 
-    await sleep(state.fastDeal ? 0 : 10);
+    await sleep(getDealDelay(10));
     fly.style.transform = `translate(${dx}px, ${dy}px)`;
     await new Promise(resolve => fly.addEventListener('transitionend', resolve, { once: true }));
 
@@ -1205,7 +1211,7 @@
     sortHand(toWho.hand);
     fly.remove();
     updateUI();
-    await sleep(state.fastDeal ? 0 : 60);
+    await sleep(getDealDelay(60));
     return true;
   }
 
@@ -1714,8 +1720,9 @@
   });
   // removed shuffle and advisor handlers
   el.fastBtn.addEventListener('click', () => {
-    state.fastDeal = !state.fastDeal;
-    el.fastBtn.textContent = `Быстрая раздача: ${state.fastDeal ? 'вкл' : 'выкл'}`;
+    state.dealSpeedIndex = ((state.dealSpeedIndex || 0) + 1) % dealSpeeds.length;
+    const label = ['x1','x1.5','x2','x4'][state.dealSpeedIndex];
+    el.fastBtn.textContent = `Скорость: ${label}`;
   });
   // shuffle removed
 
