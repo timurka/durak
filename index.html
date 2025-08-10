@@ -143,10 +143,15 @@
     grid-auto-columns: var(--card-w);
     justify-content: center;
     gap: 8px;
-    padding: 10px;
+    padding: 10px 16px;
     min-height: calc(var(--card-h) + 20px);
     overflow-x: auto;
+    overflow-y: hidden;
+    cursor: grab;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
   }
+  .hand.dragging { cursor: grabbing; }
   .card {
     width: var(--card-w);
     height: var(--card-h);
@@ -346,6 +351,9 @@
           Переводной
         </label>
         <button class="btn small toggle" id="fastBtn">Раздача: норм</button>
+          <span class="title" style="margin-left:6px">Размер карт</span>
+          <button class="btn small secondary" id="zoomOutBtn" title="Уменьшить карты">−</button>
+          <button class="btn small" id="zoomInBtn" title="Увеличить карты">+</button>
       </div>
     </div>
   </div>
@@ -908,6 +916,14 @@
     // Shuffle button visible only during dealing
     if (el.mashBtn) el.mashBtn.style.display = state.isDealing && !state.gameOver ? '' : 'none';
   }
+  // Zoom helpers
+  function applyZoom(scale) {
+    const minW = 48, minH = 72, maxW = 110, maxH = 165;
+    const w = Math.max(minW, Math.min(maxW, Math.round(80 * scale)));
+    const h = Math.max(minH, Math.min(maxH, Math.round(120 * scale)));
+    document.documentElement.style.setProperty('--card-w', w + 'px');
+    document.documentElement.style.setProperty('--card-h', h + 'px');
+  }
   function updateUI() {
     el.tableRoot.classList.toggle('busy', state.isDealing);
     setBadges();
@@ -1404,6 +1420,36 @@
   });
   // shuffle removed
 
+  // Hand scrolling UX: drag-to-scroll and wheel horizontal
+  function enableHandScrolling(container) {
+    let isDown = false, startX = 0, scrollLeft = 0;
+    container.addEventListener('mousedown', (e) => {
+      isDown = true; startX = e.pageX - container.offsetLeft; scrollLeft = container.scrollLeft; container.classList.add('dragging');
+    });
+    container.addEventListener('mouseleave', () => { isDown = false; container.classList.remove('dragging'); });
+    container.addEventListener('mouseup', () => { isDown = false; container.classList.remove('dragging'); });
+    container.addEventListener('mousemove', (e) => {
+      if (!isDown) return; e.preventDefault(); const x = e.pageX - container.offsetLeft; const walk = (x - startX) * 1; container.scrollLeft = scrollLeft - walk;
+    });
+    container.addEventListener('wheel', (e) => {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        container.scrollLeft += e.deltaY; e.preventDefault();
+      }
+    }, { passive: false });
+  }
+
+  // Zoom controls
+  let zoomScale = 1.0;
+  const zoomStep = 0.1;
+  const minScale = 0.6;
+  const maxScale = 1.4;
+  document.getElementById('zoomInBtn').addEventListener('click', () => {
+    zoomScale = Math.min(maxScale, zoomScale + zoomStep); applyZoom(zoomScale); updateUI();
+  });
+  document.getElementById('zoomOutBtn').addEventListener('click', () => {
+    zoomScale = Math.max(minScale, zoomScale - zoomStep); applyZoom(zoomScale); updateUI();
+  });
+
   // Init
   setMessage('Нажмите «Новая игра», чтобы начать. Доступны суперсилы (1 раз за игру) и режим «Переводной».');
   updateUI();
@@ -1433,6 +1479,14 @@
     });
   }
   applyMobileDefaults();
+
+  // Enable hand scrolling after DOM is ready
+  requestAnimationFrame(() => {
+    const ph = document.getElementById('playerHand');
+    const oh = document.getElementById('opHand');
+    if (ph) enableHandScrolling(ph);
+    if (oh) enableHandScrolling(oh);
+  });
 
 })();
 </script>
