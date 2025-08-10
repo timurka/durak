@@ -807,10 +807,11 @@
         updateUI();
         await sleep(350);
       } else {
-        setMessage('ИИ не может побить и берет.');
+        const cap = getAddCap(state.ai);
+        const left = Math.max(0, cap - state.tablePairs.length);
+        setMessage(left > 0 ? `ИИ не может побить и берёт. Можете подкинуть ещё ${left} карт(ы) по рангу и затем нажмите «Завершить догонку».` : 'ИИ не может побить и берёт. Подкинуть уже нельзя. Нажмите «Завершить догонку».');
+        state.phase = 'dogonka';
         updateUI();
-        await sleep(350);
-        await defenderTakes(state.ai);
         return;
       }
     }
@@ -1113,11 +1114,9 @@
   }
   function updateButtons() {
     const noClicks = state.isDealing || state.gameOver;
-    el.endAttackBtn.disabled = noClicks || !(
-      state.attacker === 'player' &&
-      state.tablePairs.length > 0 &&
-      allDefended()
-    );
+    const canFinishDogonka = state.attacker === 'player' && state.phase === 'dogonka' && state.tablePairs.length > 0;
+    el.endAttackBtn.textContent = (state.phase === 'dogonka') ? 'Завершить догонку' : 'Бито';
+    el.endAttackBtn.disabled = noClicks || !(state.attacker === 'player' && state.tablePairs.length > 0 && (allDefended() || canFinishDogonka));
     el.takeBtn.disabled = noClicks || !(
       state.attacker === 'ai' &&
       state.tablePairs.length > 0 &&
@@ -1126,6 +1125,7 @@
     el.peekBtn.disabled = noClicks || state.superUsed;
     el.swapBtn.disabled = noClicks || state.superUsed || state.player.hand.length === 0;
     // Duplicate controls near hand
+    el.endAttackBtn2.textContent = el.endAttackBtn.textContent;
     el.endAttackBtn2.disabled = el.endAttackBtn.disabled;
     el.takeBtn2.disabled = el.takeBtn.disabled;
     // Shuffle button visible only during dealing
@@ -1516,9 +1516,11 @@
           setMessage('ИИ побил карту. Можете подкинуть по рангу на стол или завершить атаку (Бито).');
           updateUI();
         } else {
-          setMessage('ИИ не может побить и берет.');
+          const cap = getAddCap(state.ai);
+          const left = Math.max(0, cap - state.tablePairs.length);
+          setMessage(left > 0 ? `ИИ не может побить и берёт. Можете подкинуть ещё ${left} карт(ы) по рангу и затем нажмите «Завершить догонку».` : 'ИИ не может побить и берёт. Подкинуть уже нельзя. Нажмите «Завершить догонку».');
+          state.phase = 'dogonka';
           updateUI();
-          setTimeout(async () => { await defenderTakes(state.ai); }, 650);
           return;
         }
       }, 380);
@@ -1677,6 +1679,11 @@
   el.endAttackBtn.addEventListener('click', async () => {
     if (state.isDealing || state.gameOver) return;
     if (state.attacker !== 'player') return;
+    if (state.phase === 'dogonka') {
+      setMessage('Завершаем догонку: противник берёт карты.');
+      await defenderTakes(state.ai);
+      return;
+    }
     if (!allDefended()) return;
     setMessage('Бито. Завершаем взятку.');
     await endBoutSuccessfulDefense();
@@ -1684,6 +1691,11 @@
   el.endAttackBtn2.addEventListener('click', async () => {
     if (state.isDealing || state.gameOver) return;
     if (state.attacker !== 'player') return;
+    if (state.phase === 'dogonka') {
+      setMessage('Завершаем догонку: противник берёт карты.');
+      await defenderTakes(state.ai);
+      return;
+    }
     if (!allDefended()) return;
     setMessage('Бито. Завершаем взятку.');
     await endBoutSuccessfulDefense();
@@ -1696,8 +1708,8 @@
     if (target) {
       state.memory.playerDislikeScore[target.suit] = (state.memory.playerDislikeScore[target.suit] || 0) + 1;
     }
-    setMessage('Вы берёте карты.');
-    await defenderTakes(state.player);
+    setMessage('Вы берёте карты. ИИ может докинуть вдогонку...');
+    await aiDogonkaThenPlayerTakes();
   });
   el.takeBtn2.addEventListener('click', async () => {
     if (state.isDealing || state.gameOver) return;
@@ -1707,8 +1719,8 @@
     if (target) {
       state.memory.playerDislikeScore[target.suit] = (state.memory.playerDislikeScore[target.suit] || 0) + 1;
     }
-    setMessage('Вы берёте карты.');
-    await defenderTakes(state.player);
+    setMessage('Вы берёте карты. ИИ может докинуть вдогонку...');
+    await aiDogonkaThenPlayerTakes();
   });
   el.resetScoreBtn.addEventListener('click', () => {
     state.playerScore = 0; state.aiScore = 0; updateScoreBoard(); setMessage('Счёт сброшен.');
@@ -1834,6 +1846,26 @@
     if (oh) enableHandScrolling(oh);
   });
 
+  // AI dogonka: when the player chooses to take, AI may add more cards up to the allowed cap
+  async function aiDogonkaThenPlayerTakes() {
+    if (state.gameOver || state.isDealing) return;
+    if (state.attacker !== 'ai') return;
+    const defender = state.player;
+    let addedAny = false;
+    while (canAddMore(defender)) {
+      const ranks = ranksOnTable();
+      const candidates = state.ai.hand.filter(c => ranks.has(c.rank));
+      if (candidates.length === 0) break;
+      const addCard = chooseLowest(candidates, true);
+      removeFromHand(state.ai, addCard.id);
+      state.tablePairs.push({ attack: addCard, defense: null });
+      addedAny = true;
+      updateUI();
+      await sleep(320);
+    }
+    if (addedAny) setMessage('ИИ докинул карты. Вы берёте.');
+    await defenderTakes(state.player);
+  }
 })();
 </script>
 </body>
