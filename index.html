@@ -797,7 +797,52 @@
     });
     return candidates[0];
   }
+  // Оценка: способен ли ИИ побить все открытые атаки (без траты карт впустую)
+  function aiCanDefendAllOpenPairs(aiHand, openAttacks) {
+    const nA = openAttacks.length;
+    if (nA === 0) return true;
+    // Строим двудольный граф: атаки -> подходящие защитные карты ИИ
+    const adj = openAttacks.map((atk) => aiHand
+      .map((c, j) => ({ j, c }))
+      .filter(x => cardBeats(x.c, atk))
+      .map(x => x.j)
+    );
+    const matchToAttack = new Array(aiHand.length).fill(-1);
+    function dfs(aIdx, seen) {
+      for (const j of adj[aIdx]) {
+        if (seen[j]) continue;
+        seen[j] = true;
+        if (matchToAttack[j] === -1 || dfs(matchToAttack[j], new Array(aiHand.length).fill(false))) {
+          matchToAttack[j] = aIdx;
+          return true;
+        }
+      }
+      return false;
+    }
+    for (let i = 0; i < nA; i++) {
+      if (!dfs(i, new Array(aiHand.length).fill(false))) return false;
+    }
+    return true;
+  }
   async function aiDefendAllOpenOrTake() {
+    // Предоценка: если ИИ не может закрыть все открытые атаки, то сразу берёт
+    const openNow = state.tablePairs.filter(p => p.defense == null).map(p => p.attack);
+    if (!aiCanDefendAllOpenPairs(state.ai.hand, openNow)) {
+      const cap = getAddCap(state.ai);
+      const left = Math.max(0, cap - state.tablePairs.length);
+      const canPlayerAdd = validPlayerAttackCards().length > 0 && left > 0;
+      if (canPlayerAdd) {
+        setMessage(left > 0 ? `ИИ не может побить и берёт. Можете подкинуть ещё ${left} карт(ы) по рангу и затем нажмите «Завершить догонку».` : 'ИИ не может побить и берёт. Подкинуть уже нельзя. Нажмите «Завершить догонку».');
+        state.phase = 'dogonka';
+        updateUI();
+        return;
+      } else {
+        setMessage('ИИ не может побить и берёт.');
+        updateUI();
+        await defenderTakes(state.ai);
+        return;
+      }
+    }
     while (true) {
       const openPair = state.tablePairs.find(p => p.defense == null);
       if (!openPair) break;
@@ -810,10 +855,18 @@
       } else {
         const cap = getAddCap(state.ai);
         const left = Math.max(0, cap - state.tablePairs.length);
-        setMessage(left > 0 ? `ИИ не может побить и берёт. Можете подкинуть ещё ${left} карт(ы) по рангу и затем нажмите «Завершить догонку».` : 'ИИ не может побить и берёт. Подкинуть уже нельзя. Нажмите «Завершить догонку».');
-        state.phase = 'dogonka';
-        updateUI();
-        return;
+        const canPlayerAdd = validPlayerAttackCards().length > 0 && left > 0;
+        if (canPlayerAdd) {
+          setMessage(left > 0 ? `ИИ не может побить и берёт. Можете подкинуть ещё ${left} карт(ы) по рангу и затем нажмите «Завершить догонку».` : 'ИИ не может побить и берёт. Подкинуть уже нельзя. Нажмите «Завершить догонку».');
+          state.phase = 'dogonka';
+          updateUI();
+          return;
+        } else {
+          setMessage('ИИ не может побить и берёт.');
+          updateUI();
+          await defenderTakes(state.ai);
+          return;
+        }
       }
     }
     setMessage('ИИ побил все карты. Можете подкинуть или завершить атаку (Бито).');
@@ -913,7 +966,9 @@
         isDealing: state.isDealing,
         dealContext: state.dealContext,
         dealAttackerFirst: state.dealAttackerFirst,
-        postDeal: state.postDeal
+        postDeal: state.postDeal,
+        // UI prefs
+        zoomScale: typeof zoomScale === 'number' ? zoomScale : 1.0
       };
       // Store into localStorage (primary) and cookie as a graceful fallback
       localStorage.setItem('durak_state', JSON.stringify(payload));
@@ -955,6 +1010,11 @@
       state.peekActive = !!saved.peekActive;
       state.transferMode = !!saved.transferMode;
       state.fastDeal = !!saved.fastDeal;
+      // UI prefs
+      if (saved.zoomScale !== undefined && typeof saved.zoomScale === 'number') {
+        zoomScale = Math.max(0.6, Math.min(1.4, saved.zoomScale));
+        applyZoom(zoomScale);
+      }
       // dealing-resume fields
       state.isDealing = !!saved.isDealing;
       state.dealContext = saved.dealContext || null;
@@ -1521,6 +1581,25 @@
           }
         }
 
+        // Otherwise, before defending, оценим: сможет ли ИИ побить все открытые атаки
+        const openNow = state.tablePairs.filter(p => p.defense == null).map(p => p.attack);
+        if (!aiCanDefendAllOpenPairs(state.ai.hand, openNow)) {
+          const cap = getAddCap(state.ai);
+          const left = Math.max(0, cap - state.tablePairs.length);
+          const canPlayerAdd = validPlayerAttackCards().length > 0 && left > 0;
+          if (canPlayerAdd) {
+            setMessage(left > 0 ? `ИИ не может побить и берёт. Можете подкинуть ещё ${left} карт(ы) по рангу и затем нажмите «Завершить догонку».` : 'ИИ не может побить и берёт. Подкинуть уже нельзя. Нажмите «Завершить догонку».');
+            state.phase = 'dogonka';
+            updateUI();
+            return;
+          } else {
+            setMessage('ИИ не может побить и берёт.');
+            updateUI();
+            setTimeout(async () => { await defenderTakes(state.ai); }, 200);
+            return;
+          }
+        }
+
         // Otherwise defend
         const defCard = aiChooseDefenseCard(pair.attack);
         if (defCard) {
@@ -1531,10 +1610,18 @@
         } else {
           const cap = getAddCap(state.ai);
           const left = Math.max(0, cap - state.tablePairs.length);
-          setMessage(left > 0 ? `ИИ не может побить и берёт. Можете подкинуть ещё ${left} карт(ы) по рангу и затем нажмите «Завершить догонку».` : 'ИИ не может побить и берёт. Подкинуть уже нельзя. Нажмите «Завершить догонку».');
-          state.phase = 'dogonka';
-          updateUI();
-          return;
+          const canPlayerAdd = validPlayerAttackCards().length > 0 && left > 0;
+          if (canPlayerAdd) {
+            setMessage(left > 0 ? `ИИ не может побить и берёт. Можете подкинуть ещё ${left} карт(ы) по рангу и затем нажмите «Завершить догонку».` : 'ИИ не может побить и берёт. Подкинуть уже нельзя. Нажмите «Завершить догонку».');
+            state.phase = 'dogonka';
+            updateUI();
+            return;
+          } else {
+            setMessage('ИИ не может побить и берёт.');
+            updateUI();
+            setTimeout(async () => { await defenderTakes(state.ai); }, 200);
+            return;
+          }
         }
       }, 380);
 
@@ -1788,10 +1875,14 @@
   const minScale = 0.6;
   const maxScale = 1.4;
   document.getElementById('zoomInBtn').addEventListener('click', () => {
-    zoomScale = Math.min(maxScale, zoomScale + zoomStep); applyZoom(zoomScale); updateUI();
+    zoomScale = Math.min(maxScale, zoomScale + zoomStep);
+    applyZoom(zoomScale);
+    updateUI();
   });
   document.getElementById('zoomOutBtn').addEventListener('click', () => {
-    zoomScale = Math.max(minScale, zoomScale - zoomStep); applyZoom(zoomScale); updateUI();
+    zoomScale = Math.max(minScale, zoomScale - zoomStep);
+    applyZoom(zoomScale);
+    updateUI();
   });
 
   // Init
@@ -1871,7 +1962,7 @@
       if (candidates.length === 0) break;
       const addCard = chooseLowest(candidates, true);
       removeFromHand(state.ai, addCard.id);
-      state.tablePairs.push({ attack: addCard, defense: null }); й
+      state.tablePairs.push({ attack: addCard, defense: null });
       addedAny = true;
       updateUI();
       await sleep(320);
