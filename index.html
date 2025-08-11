@@ -88,7 +88,7 @@
 
   /* Table layout */
   .table {
-    height: calc(100vh - 190px);
+    height: calc(100vh - 160px);
     min-height: 560px;
     background: radial-gradient(ellipse at center, var(--felt), var(--table-bg) 70%);
     position: relative;
@@ -103,7 +103,7 @@
   }
   .opponent-area { top: 8px; z-index: 1; }
   .center-area { top: 32%; z-index: 3; }
-  .player-area { bottom: 8px; z-index: 2; }
+  .player-area { bottom: 2px; z-index: 2; }
 
   /* Deck + trump */
   .deck-zone {
@@ -296,6 +296,7 @@
     justify-content: center;
     margin-top: 6px;
     flex-wrap: wrap;
+    z-index: 2;
   }
 
   /* Mobile adaptations */
@@ -310,10 +311,12 @@
   /* Phones portrait: smaller cards, 3 columns on table */
   @media (max-width: 480px) and (orientation: portrait) {
     :root { --card-w: 56px; --card-h: 84px; }
-    .table-pairs { grid-template-columns: repeat(3, var(--card-w)); gap: 10px 10px; }
+    .table-pairs { grid-template-columns: repeat(3, var(--card-w)); gap: 8px 8px; }
     .hand { justify-content: start; gap: 6px; padding: 8px 22px; padding-right: 24px; min-height: calc(var(--card-h) + 10px); }
     .opponent-area .hand { min-height: calc(var(--card-h) * 0.8); }
     .deck-zone { right: 8px; }
+    /* сдвинуть руку ниже, дать больше места полю */
+    .player-area { bottom: -30px; }
   }
 
   /* Phones landscape and small tablets: 4 columns on table */
@@ -1945,6 +1948,17 @@
 
   // Init
   const restored = tryRestoreState();
+  // Auto-min zoom on phones portrait by default if user hasn't changed zoom explicitly
+  try {
+    const isPortraitPhone = window.matchMedia('(max-width: 480px) and (orientation: portrait)').matches;
+    const saved = localStorage.getItem('durak_state');
+    const savedZoom = saved ? JSON.parse(saved).zoomScale : null;
+    const userHasCustomZoom = typeof savedZoom === 'number' && Math.abs(savedZoom - 1.0) > 0.0001;
+    if (isPortraitPhone && !userHasCustomZoom) {
+      zoomScale = 0.6;
+      applyZoom(zoomScale);
+    }
+  } catch(_) { /* ignore */ }
   if (!restored) {
     setMessage('Нажмите «Новая игра», чтобы начать. Доступны суперсилы (1 раз за игру) и режим «Переводной».');
   }
