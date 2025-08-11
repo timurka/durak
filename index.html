@@ -84,6 +84,7 @@
     padding: 4px 8px; border-radius: 999px; border: 1px solid #3a7d5a; background: #214f39; font-size: 13px;
   }
   .switch input { transform: translateY(1px); }
+  .mode-note { color: var(--muted); font-size: 12px; margin-left: 4px; opacity: 0.9; }
 
   /* Table layout */
   .table {
@@ -100,9 +101,9 @@
     width: min(1100px, 96vw);
     padding: 10px;
   }
-  .opponent-area { top: 8px; }
-  .center-area { top: 32%; }
-  .player-area { bottom: 8px; }
+  .opponent-area { top: 8px; z-index: 1; }
+  .center-area { top: 32%; z-index: 3; }
+  .player-area { bottom: 8px; z-index: 2; }
 
   /* Deck + trump */
   .deck-zone {
@@ -165,6 +166,17 @@
     touch-action: pan-x;
     overscroll-behavior-x: contain;
   }
+  /* Two-rows layout for mobile when many cards in player's hand */
+  .hand.two-rows {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(auto-fill, var(--card-w));
+    grid-auto-rows: var(--card-h);
+    min-height: calc(var(--card-h) * 2 + 20px);
+    height: calc(var(--card-h) * 2 + 20px);
+    overflow-x: hidden;
+    row-gap: 8px;
+    z-index: 2; /* ниже центра стола */
+  }
   .hand.dragging { cursor: grabbing; }
   .card {
     width: var(--card-w);
@@ -176,6 +188,7 @@
     border: 1px solid #eee;
     position: relative;
     user-select: none;
+    z-index: 1;
   }
   .card.face-down {
     background: repeating-linear-gradient(45deg, #0e3b27, #0e3b27 6px, #12563a 6px, #12563a 12px);
@@ -228,15 +241,18 @@
     width: var(--card-w);
     height: calc(var(--card-h) * 2 + 10px);
     position: relative;
+    z-index: 3;
   }
   .pair .card.attack {
     position: absolute;
     top: 0; left: 0;
+    z-index: 3;
   }
   .pair .card.defense {
     position: absolute;
     top: 26px; left: 12px;
     transform: rotate(5deg);
+    z-index: 3;
   }
   .pair.open .card.attack { filter: drop-shadow(0 0 6px rgba(255,215,0,0.6)); }
 
@@ -348,9 +364,7 @@
     <div class="group" id="group-game">
       <span class="title"><span class="arrow"></span>Игра</span>
       <div class="group-content">
-        <button class="btn small" id="newGameBtn">Новая</button>
-        <button class="btn small secondary" id="endAttackBtn" disabled>Бито</button>
-        <button class="btn small danger" id="takeBtn" disabled>Взять</button>
+        <button class="btn small" id="newGameBtn">Новая игра</button>
         <button class="btn small" id="resetScoreBtn">Сброс счёта</button>
       </div>
     </div>
@@ -366,11 +380,11 @@
       <div class="group-content">
         <label class="switch">
           <input type="checkbox" id="transferModeChk"/>
-          Переводной
+          Переводной <span id="transferNote" class="mode-note"></span>
         </label>
         <label class="switch">
           <input type="checkbox" id="doubleTrumpChk"/>
-          Двойной козырь
+          Двойной козырь <span id="trumpNote" class="mode-note"></span>
         </label>
         <button class="btn small toggle" id="fastBtn">Раздача: норм</button>
           <span class="title" style="margin-left:6px">Размер карт</span>
@@ -397,7 +411,7 @@
     <div class="pile" id="deckPile"></div>
     <div class="count-label">В колоде: <span id="deckCount">0</span></div>
     <div class="trump-badge">Козырь: <span id="trumpSuit">—</span></div>
-    <div class="count-label">Сброс: <span id="discardCount">0</span></div>
+    <div class="count-label">Бито: <span id="discardCount">0</span></div>
   </div>
 
   <div class="area player-area">
@@ -463,7 +477,8 @@
     superUsed: false,
     peekActive: false,
     // Mode
-    transferMode: false,
+    transferMode: false,          // applies to current round only
+    transferModePlanned: false,   // checkbox preference, applies on next New Game
     // Lightweight memory for AI
     memory: {
       playerDislikeScore: { '♠': 0, '♥': 0, '♦': 0, '♣': 0 },
@@ -500,6 +515,8 @@
     superBadge: document.getElementById('superBadge'),
     transferModeChk: document.getElementById('transferModeChk'),
     doubleTrumpChk: document.getElementById('doubleTrumpChk'),
+    transferNote: document.getElementById('transferNote'),
+    trumpNote: document.getElementById('trumpNote'),
     rulesDetails: document.getElementById('rulesDetails'),
     endAttackBtn2: document.getElementById('endAttackBtn2'),
     takeBtn2: document.getElementById('takeBtn2'),
@@ -961,6 +978,7 @@
         superUsed: state.superUsed,
         peekActive: state.peekActive,
         transferMode: state.transferMode,
+        transferModePlanned: state.transferModePlanned,
         fastDeal: state.fastDeal,
         // dealing-resume fields
         isDealing: state.isDealing,
@@ -1009,6 +1027,7 @@
       state.superUsed = !!saved.superUsed;
       state.peekActive = !!saved.peekActive;
       state.transferMode = !!saved.transferMode;
+      state.transferModePlanned = !!saved.transferModePlanned;
       state.fastDeal = !!saved.fastDeal;
       // UI prefs
       if (saved.zoomScale !== undefined && typeof saved.zoomScale === 'number') {
@@ -1184,21 +1203,21 @@
   function updateButtons() {
     const noClicks = state.isDealing || state.gameOver;
     const canFinishDogonka = state.attacker === 'player' && state.phase === 'dogonka' && state.tablePairs.length > 0;
-    el.endAttackBtn.textContent = (state.phase === 'dogonka') ? 'Завершить догонку' : 'Бито';
-    el.endAttackBtn.disabled = noClicks || !(state.attacker === 'player' && state.tablePairs.length > 0 && (allDefended() || canFinishDogonka));
-    el.takeBtn.disabled = noClicks || !(
-      state.attacker === 'ai' &&
-      state.tablePairs.length > 0 &&
-      tableHasUndefended()
-    );
-    el.peekBtn.disabled = noClicks || state.superUsed;
-    el.swapBtn.disabled = noClicks || state.superUsed || state.player.hand.length === 0;
-    // Duplicate controls near hand
-    el.endAttackBtn2.textContent = el.endAttackBtn.textContent;
-    el.endAttackBtn2.disabled = el.endAttackBtn.disabled;
-    el.takeBtn2.disabled = el.takeBtn.disabled;
+    const endText = (state.phase === 'dogonka') ? 'Завершить догонку' : 'Бито';
+    const endDisabled = noClicks || !(state.attacker === 'player' && state.tablePairs.length > 0 && (allDefended() || canFinishDogonka));
+    const takeDisabled = noClicks || !(state.attacker === 'ai' && state.tablePairs.length > 0 && tableHasUndefended());
+    if (el.endAttackBtn2) { el.endAttackBtn2.textContent = endText; el.endAttackBtn2.disabled = endDisabled; }
+    if (el.takeBtn2) { el.takeBtn2.disabled = takeDisabled; }
+    if (el.endAttackBtn) { el.endAttackBtn.textContent = endText; el.endAttackBtn.disabled = endDisabled; }
+    if (el.takeBtn) { el.takeBtn.disabled = takeDisabled; }
+    if (el.peekBtn) el.peekBtn.disabled = noClicks || state.superUsed;
+    if (el.swapBtn) el.swapBtn.disabled = noClicks || state.superUsed || state.player.hand.length === 0;
     // Shuffle button visible only during dealing
     if (el.mashBtn) el.mashBtn.style.display = state.isDealing && !state.gameOver ? '' : 'none';
+  }
+  function updateModeNotes() {
+    if (el.transferNote) el.transferNote.textContent = state.transferModePlanned ? ' (сл. раунд)' : '';
+    if (el.trumpNote) el.trumpNote.textContent = state.doubleTrumpPlanned ? ' (сл. раунд)' : '';
   }
   // Zoom helpers
   function applyZoom(scale) {
@@ -1208,19 +1227,53 @@
     document.documentElement.style.setProperty('--card-w', w + 'px');
     document.documentElement.style.setProperty('--card-h', h + 'px');
   }
+  // Auto layout for mobile: when too many cards or many pairs on table, switch to two rows or auto-zoom
+  function autoLayoutForMobile() {
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    if (!isMobile) { el.playerHand.classList.remove('two-rows'); return; }
+    const handCount = state.player.hand.length;
+    const tableLoad = state.tablePairs.length; // many cards on table
+    // If hand is big or table has many pairs, try two rows; if still overflowing, reduce zoom slightly
+    const handEl = el.playerHand;
+    // Toggle two-rows when hand >= 10 or table pairs >= 6
+    if (handCount >= 10 || tableLoad >= 6) {
+      handEl.classList.add('two-rows');
+    } else {
+      handEl.classList.remove('two-rows');
+    }
+    // Simple auto-shrink: ensure total visible height fits under available area
+    try {
+      const area = document.querySelector('.player-area');
+      if (!area) return;
+      const areaRect = area.getBoundingClientRect();
+      const tableRect = document.querySelector('.center-area').getBoundingClientRect();
+      const overlap = (tableRect.bottom + 8) - areaRect.top;
+      if (overlap > 0) {
+        // reduce zoom in small steps, down to minScale
+        const desired = Math.max(0.6, zoomScale - 0.1);
+        if (desired < zoomScale) { zoomScale = desired; applyZoom(zoomScale); }
+      }
+    } catch(_) { /* ignore */ }
+  }
   function updateUI() {
     el.tableRoot.classList.toggle('busy', state.isDealing);
     // Reveal second trump if enabled and deck is empty
     maybeRevealSecondTrump();
     // Sync mode toggles from state
-    if (el.transferModeChk) el.transferModeChk.checked = !!state.transferMode;
+    if (el.transferModeChk) el.transferModeChk.checked = !!state.transferModePlanned;
     if (el.doubleTrumpChk) el.doubleTrumpChk.checked = !!state.doubleTrumpPlanned;
+    updateModeNotes();
+    // Restore message into log on redraw
+    if (el.log && typeof state.message === 'string' && state.message.length > 0) {
+      el.log.innerHTML = state.message;
+    }
     setBadges();
     updateScoreBoard();
     renderDeck();
     renderTable();
     renderHands();
     updateButtons();
+    autoLayoutForMobile();
     updateAdvisorToast();
     persistState();
   }
@@ -1394,6 +1447,8 @@
         state.playerScore++;
         setMessage('Победа! Вы вышли из карт первым. Счет: Вы ' + state.playerScore + ' — ИИ ' + state.aiScore);
         celebrate();
+        // В конце раунда (ваша победа) — вскрыть все карты ИИ до новой игры
+        state.peekActive = true;
         state.gameOver = true; updateUI(); return true;
       }
       if (aEmpty) {
@@ -1448,7 +1503,7 @@
     state.phase = (state.attacker === 'player') ? 'attack' : 'ai_turn';
     updateUI();
     if (checkGameOver()) return;
-    setMessage(state.attacker === 'player' ? 'Противник взял. Ваш ход продолжается.' : 'Вы взяли. ИИ атакует снова.');
+    setMessage(defender === state.ai ? 'Противник взял. Ваш ход продолжается.' : 'Вы взяли. ИИ атакует снова.');
     if (state.attacker === 'ai') setTimeout(aiTurn, 600);
   }
 
@@ -1456,6 +1511,8 @@
     if (state.isDealing) return;
     // Apply planned double-trump setting to this round and reset previous trump markers
     state.doubleTrumpActive = !!state.doubleTrumpPlanned;
+    // Apply planned transfer mode setting to this round
+    state.transferMode = !!state.transferModePlanned;
     state.prevTrumpSuit = null;
     state.prevTrumpRefRank = null;
     // Prepare deck and trump with redeal rule applied
@@ -1776,7 +1833,7 @@
 
   // Buttons and controls
   el.newGameBtn.addEventListener('click', async () => { await startGame(); });
-  el.endAttackBtn.addEventListener('click', async () => {
+  if (el.endAttackBtn) el.endAttackBtn.addEventListener('click', async () => {
     if (state.isDealing || state.gameOver) return;
     if (state.attacker !== 'player') return;
     if (state.phase === 'dogonka') {
@@ -1800,7 +1857,7 @@
     setMessage('Бито. Завершаем взятку.');
     await endBoutSuccessfulDefense();
   });
-  el.takeBtn.addEventListener('click', async () => {
+  if (el.takeBtn) el.takeBtn.addEventListener('click', async () => {
     if (state.isDealing || state.gameOver) return;
     if (state.attacker !== 'ai') return;
     if (!tableHasUndefended()) return;
@@ -1828,13 +1885,14 @@
   el.peekBtn.addEventListener('click', () => usePeek());
   el.swapBtn.addEventListener('click', async () => { await useSwapHand(); });
   el.transferModeChk.addEventListener('change', (e) => {
-    state.transferMode = !!e.target.checked;
-    setMessage(state.transferMode ? 'Режим: Переводной' : 'Режим: Подкидной');
-    updateUI();
+    state.transferModePlanned = !!e.target.checked;
+    setMessage(state.transferModePlanned ? 'Режим: Переводной будет применён со следующей новой игры' : 'Режим: Переводной выключен (вступит со следующей новой игры)');
+    updateModeNotes();
   });
   el.doubleTrumpChk.addEventListener('change', (e) => {
     state.doubleTrumpPlanned = !!e.target.checked;
     setMessage(state.doubleTrumpPlanned ? 'Режим: Двойной козырь будет применён со следующей новой игры' : 'Режим: Двойной козырь выключен (вступит со следующей новой игры)');
+    updateModeNotes();
   });
   // removed shuffle and advisor handlers
   el.fastBtn.addEventListener('click', () => {
